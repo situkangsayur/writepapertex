@@ -47,7 +47,7 @@ class LatexmkEngine implements LatexEngine {
     void Function(String line)? onOutput,
   }) async {
     final started = DateTime.now();
-    final buildDir = await ensureDir(buildDirFor(projectDir));
+    final buildDir = await ensureBuildDir(projectDir);
     final buffer = StringBuffer();
 
     // -file-line-error is what makes the log carry "file:line:" prefixes,

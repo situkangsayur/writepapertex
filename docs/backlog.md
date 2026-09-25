@@ -80,9 +80,22 @@ sungguhan hari ini alih-alih ditebak.
 Disebut khusus karena tabel LaTeX adalah bagian yang paling menyiksa ditulis
 dengan tangan, terutama di tablet.
 
-- [ ] Penyunting tabel visual: baris, kolom, gabung sel, perataan
-- [ ] Sisipkan dari CSV dan dari papan klip
-- [ ] `booktabs` sebagai bawaan, karena `\hline` bertumpuk jarang benar
+- [x] **Penyunting tabel visual**: kisi yang disunting langsung, tambah/hapus
+      baris dan kolom, perataan per kolom, jumlah baris judul, dan Tab
+      berjalan urut menyusuri sel — tanpa itu papan tik tidak berguna untuk
+      tabel
+- [x] **Sisipkan dari papan klip / CSV**: pemisah ditebak sendiri (tab, titik
+      koma, koma, pipa), tanda kutip CSV dihormati, baris pendek dilengkapi
+      alih-alih datanya dibuang, dan kolom yang isinya angka otomatis rata
+      kanan
+- [x] **`booktabs` sebagai bawaan** — `\toprule`/`\midrule`/`\bottomrule`;
+      `\hline` tetap tersedia lewat sakelar
+- [x] Karakter yang akan merusak tabel (`&`, `%`, `_`, `$`, `#`, kurung
+      kurawal) di-escape saat menulis LaTeX-nya
+- [x] Penyisipan jatuh sebelum `\end{document}` kalau kursornya di luar badan
+      dokumen — teks setelah itu diabaikan LaTeX, jadi tabelnya akan diam-diam
+      tidak pernah muncul
+- [ ] Gabung sel (`\multicolumn`, `\multirow`) lewat antarmuka
 - [ ] Tabel panjang (`longtable`) dan tabel lebar (`sidewaystable`)
 - [ ] Sunting tabel yang sudah ada di berkas, bukan hanya membuat yang baru
 
@@ -102,13 +115,21 @@ Gitea yang dipasang sendiri**, harus ikut jalan. Alasan dan pilihan teknisnya
 di KT-6 — ringkasnya, cara ReadPaper (GitHub REST API) tidak dipakai ulang di
 sini karena berarti satu adaptor per penyedia, selamanya.
 
-- [ ] **Desktop: panggil biner `git`.** Langsung bekerja dengan GitHub,
-      GitLab, Gitea, remote SSH biasa, bahkan folder lokal
-- [ ] Uji terhadap Gitea sungguhan, bukan hanya GitHub
-- [ ] Profil repositori (nama, remote, cabang, identitas commit), pola sama
-      dengan ReadPaper
-- [ ] Clone, pull, commit, push dari dalam aplikasi
-- [ ] Tampilkan perubahan lokal sebelum commit
+- [x] **Desktop: panggil biner `git`.** Diuji terhadap repositori bare
+      sungguhan — yang bagi `git` berperilaku persis seperti GitHub, GitLab,
+      atau Gitea sendiri. 10 tes: clone, ubah, commit, push (dan remote-nya
+      benar-benar menerima), pull, serta pull yang tidak membuang tulisan
+      yang belum disimpan
+- [x] Clone, pull, commit, push dari dalam aplikasi, lewat panel Git
+- [x] Tampilkan perubahan lokal sebelum commit, beserta jenis perubahannya
+- [x] Folder biasa bisa dijadikan repositori dari dalam aplikasi, dengan
+      remote apa pun — GitHub, Gitea kantor, atau folder lain di komputer ini
+- [x] Keluaran build tidak lagi muncul di `git status`: `.writepapertex/`
+      berisi `.gitignore` yang mengabaikan dirinya sendiri, jadi `.gitignore`
+      milik penulis tidak disentuh
+- [ ] Uji terhadap Gitea sungguhan di jaringan, bukan hanya repositori bare
+- [ ] Profil repositori (nama, remote, cabang, identitas commit)
+- [ ] Identitas commit diambil dari pengaturan aplikasi, bukan dari git global
 - [ ] **Android: protokol git smart HTTP**, diterapkan sendiri — satu
       penerapan untuk semua host. Clone dan pull dulu; commit dan push
       belakangan karena menulis *pack* jauh lebih rumit daripada membacanya

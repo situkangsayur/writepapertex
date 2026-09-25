@@ -10,6 +10,10 @@ import '../../compile/domain/latex_engine.dart';
 import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
 import '../../editor/presentation/latex_editor.dart';
+import '../../git/data/git_cli_backend.dart';
+import '../../git/domain/git_backend.dart';
+import '../../git/presentation/git_panel.dart';
+import '../../table/presentation/table_editor_sheet.dart';
 import '../domain/latex_project.dart';
 
 /// Everything at once: files on the left, source in the middle, PDF on the
@@ -27,6 +31,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final TextEditingController _editor = TextEditingController();
   final PdfViewerController _pdf = PdfViewerController();
   final LatexmkEngine _engine = const LatexmkEngine();
+  final GitBackend _git = const GitCliBackend();
 
   late final LatexProject _project = widget.project;
 
@@ -136,6 +141,36 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     });
   }
 
+  /// Opens the grid editor and writes the LaTeX at the caret.
+  Future<void> _insertTable() async {
+    final latex = await showTableEditor(context);
+    if (latex == null || !mounted) return;
+    final text = _editor.text;
+    final at = _insertionPoint(text);
+    _editor.value = TextEditingValue(
+      text: text.replaceRange(at, at, '$latex\n'),
+      selection: TextSelection.collapsed(offset: at + latex.length + 1),
+    );
+  }
+
+  /// Where an inserted block should land.
+  ///
+  /// Anything after `\end{document}` is ignored by LaTeX, so inserting there
+  /// produces a table that silently never appears. When the caret is outside
+  /// the body — which it is whenever the editor has not been clicked into —
+  /// the insertion moves to just before the end instead.
+  int _insertionPoint(String text) {
+    final selection = _editor.selection;
+    final caret = selection.isValid ? selection.baseOffset : text.length;
+    final end = text.lastIndexOf(r'\end{document}');
+    if (end < 0 || caret <= end) return caret;
+    return end;
+  }
+
+  Future<void> _openGit() async {
+    await showGitPanel(context, directory: _project.directory, backend: _git);
+  }
+
   Future<void> _save() async {
     final relative = _openFile;
     if (relative == null) return;
@@ -203,6 +238,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               icon: const Icon(Icons.save_outlined),
               onPressed: _dirty ? _save : null,
             ),
+          IconButton(
+            tooltip: 'Sisipkan tabel',
+            icon: const Icon(Icons.table_chart_outlined),
+            onPressed: _insertTable,
+          ),
+          IconButton(tooltip: 'Git', icon: const Icon(Icons.commit_outlined), onPressed: _openGit),
           FilledButton.tonalIcon(
             onPressed: (_compiling || _engineReady == false) ? null : _compile,
             icon: const Icon(Icons.play_arrow, size: 18),

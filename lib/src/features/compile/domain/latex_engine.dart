@@ -190,3 +190,22 @@ Future<String> ensureDir(String path) async {
   if (!dir.existsSync()) await dir.create(recursive: true);
   return dir.path;
 }
+
+/// Creates the build directory and makes git ignore it.
+///
+/// Keeping the output out of the project folder is not enough on its own:
+/// `.writepapertex/` still sits inside the working tree, so `git status`
+/// reports it and every commit would carry a rebuilt PDF. A `.gitignore`
+/// holding `*` inside the folder makes it ignore itself, without touching a
+/// `.gitignore` the author wrote.
+Future<String> ensureBuildDir(String projectDir) async {
+  final marker = Directory(p.join(projectDir, '.writepapertex'));
+  final created = !marker.existsSync();
+  final build = await ensureDir(buildDirFor(projectDir));
+  if (created) {
+    await File(
+      p.join(marker.path, '.gitignore'),
+    ).writeAsString('# Keluaran kompilasi; tidak perlu masuk riwayat.\n*\n');
+  }
+  return build;
+}

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:writepapertex/src/features/compile/domain/latex_engine.dart';
 
 void main() {
@@ -69,6 +72,8 @@ LaTeX Warning: Citation `x' undefined on input line 7.
     expect(messages.map((m) => m.line), <int>[1, 2, 3]);
   });
 
+  _buildDirTests();
+
   group('generated files', () {
     test('build leftovers are recognised', () {
       for (final name in <String>[
@@ -90,6 +95,35 @@ LaTeX Warning: Citation `x' undefined on input line 7.
       for (final name in <String>['main.tex', 'refs.bib', 'gambar/plot.png', 'README.md']) {
         expect(isGeneratedFile(name), isFalse, reason: name);
       }
+    });
+  });
+}
+
+void _buildDirTests() {
+  group('build directory', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('wptex_build_'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('ignores itself, so git never reports the build output', () async {
+      await ensureBuildDir(dir.path);
+      final ignore = File(p.join(dir.path, '.writepapertex', '.gitignore'));
+      expect(ignore.existsSync(), isTrue);
+      expect(ignore.readAsStringSync(), contains('*'));
+    });
+
+    test('the build folder is inside the marker folder, not the project root', () async {
+      final build = await ensureBuildDir(dir.path);
+      expect(p.isWithin(p.join(dir.path, '.writepapertex'), build), isTrue);
+      expect(Directory(dir.path).listSync().length, 1);
+    });
+
+    test('running twice does not overwrite an edited .gitignore', () async {
+      await ensureBuildDir(dir.path);
+      final ignore = File(p.join(dir.path, '.writepapertex', '.gitignore'));
+      ignore.writeAsStringSync('punya orang');
+      await ensureBuildDir(dir.path);
+      expect(ignore.readAsStringSync(), 'punya orang');
     });
   });
 }
