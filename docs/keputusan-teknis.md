@@ -40,14 +40,50 @@ Rust** persis seperti yang diminta, dan sudah ada preseden memakainya di
 Android lewat `cargo-ndk` (proyek TeXslate). Penyambungannya lewat
 `flutter_rust_bridge`, pola yang sama dengan rencana inti Rust di ReadPaper.
 
-**Yang belum terbukti dan harus dibuktikan lebih dulu**: kompilasi silang
-Tectonic ke `aarch64-linux-android`, dan berapa besar tambahannya pada APK.
-Sampai itu terbukti, versi Android belum bisa mengompilasi apa pun. Jangan
-menulis antarmuka yang mengandaikannya sudah ada.
+### Hasil percobaan kompilasi silang (2026-09-25)
 
-**Cadangan kalau Tectonic tidak bisa**: layanan kompilasi di komputer sendiri
-yang dipanggil tablet lewat jaringan lokal. Lebih lemah — perlu jaringan dan
-sebuah komputer — tapi jauh lebih pasti.
+Dicoba sungguhan, bukan diperkirakan. `cargo-ndk` 4.1.2 dipasang, NDK 28.2
+dipakai, target `aarch64-linux-android` sudah ada. Hasilnya berhenti di satu
+titik yang jelas:
+
+```
+tectonic_dep_support panicked:
+pkg-config has not been configured to support cross-compilation.
+```
+
+**Sebabnya:** Tectonic tidak murni Rust. Ia membungkus XeTeX, dan meminta
+tujuh pustaka C lewat `pkg-config` milik platform target:
+
+| Pustaka | Bisa di-vendor? |
+|---|---|
+| `harfbuzz` | **Ya** — ada fitur `external-harfbuzz`, matikan maka ikut dibangun |
+| `flate` | Ya, itu Rust |
+| `fontconfig` | Tidak |
+| `freetype2` | Tidak |
+| `graphite2` | Tidak |
+| `icu` | Tidak |
+| `png` | Tidak |
+
+Jadi pekerjaan sesungguhnya bukan "kompilasi silang Tectonic", melainkan
+**membangun lima pustaka C itu untuk `aarch64-linux-android` lebih dulu**,
+lalu menyediakan sysroot beserta berkas `.pc`-nya untuk `pkg-config`. ICU
+sendirian sudah besar. Ini pekerjaan berhari-hari, bukan sore hari, dan
+sebaiknya dikerjakan sebagai tahapnya sendiri dengan hasil yang bisa
+dipakai ulang (skrip build + artefak yang disimpan).
+
+Sampai itu selesai, versi Android tidak bisa mengompilasi, dan antarmukanya
+mengatakan hal itu alih-alih menyediakan tombol yang gagal.
+
+### Dua cadangan, keduanya bisa dipakai hari ini
+
+1. **Kompilasi di komputer, tarik lewat git.** Desktop sudah bisa
+   mengompilasi dan git sudah jalan (Fase 6). Menyimpan PDF-nya sebagai
+   commit berarti tablet cukup menariknya. Tanpa infrastruktur baru sama
+   sekali — yang perlu diputuskan hanya apakah PDF layak masuk riwayat.
+2. **Layanan kompilasi di komputer sendiri**, dipanggil tablet lewat
+   jaringan lokal atau WireGuard yang sudah ada. Lebih lemah karena perlu
+   komputer yang menyala, tapi jauh lebih pasti daripada menunggu lima
+   pustaka C selesai diporting.
 
 ---
 

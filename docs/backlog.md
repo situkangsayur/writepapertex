@@ -35,7 +35,19 @@ sungguhan hari ini alih-alih ditebak.
 - [x] Keluaran build ditaruh di `.writepapertex/build/`, bukan di sebelah sumbernya
 - [x] Pengurai log: `!` error, `berkas:baris:` error, dan peringatan LaTeX/Package/Class
 - [x] Pesan yang jelas ketika TeX Live tidak terpasang, bukan crash
-- [ ] **Mesin Tectonic untuk Android** — palang pintu; lihat KT-2
+- [~] **Mesin Tectonic untuk Android** — dicoba sungguhan pada 2026-09-25 dan
+      **terhenti di titik yang jelas**: Tectonic bukan murni Rust, ia
+      membungkus XeTeX dan meminta tujuh pustaka C lewat `pkg-config` target.
+      Hanya `harfbuzz` yang punya opsi vendored; `fontconfig`, `freetype2`,
+      `graphite2`, `icu`, dan `png` harus dibangun sendiri untuk
+      `aarch64-linux-android` beserta sysroot `pkg-config`-nya. Rinciannya
+      di KT-2.
+- [ ] Bangun lima pustaka C itu untuk Android sebagai tahap tersendiri, dengan
+      skrip build dan artefak yang disimpan supaya tidak diulang
+- [ ] Cadangan yang bisa dipakai hari ini: kompilasi di komputer, PDF-nya
+      di-commit, tablet tinggal menarik — tanpa infrastruktur baru
+- [ ] Cadangan kedua: layanan kompilasi di komputer sendiri, dipanggil tablet
+      lewat WireGuard yang sudah ada
 - [ ] Kompilasi ulang otomatis saat berkas disimpan, dengan penundaan
 - [ ] Batalkan kompilasi yang sedang berjalan
 - [ ] BibTeX/Biber (latexmk sudah menjalankannya, tapi belum diuji di sini)
