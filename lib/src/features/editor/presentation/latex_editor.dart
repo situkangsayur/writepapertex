@@ -99,6 +99,9 @@ class _LatexEditorState extends State<LatexEditor> {
       selection: TextSelection.collapsed(offset: from + caret),
     );
     setState(() => _suggestions = const <Completion>[]);
+    // Tapping a suggestion moves focus onto the chip, so without this the
+    // next keystroke — and Ctrl+S — goes nowhere.
+    _focus.requestFocus();
   }
 
   /// The leading whitespace of the line the caret is on.

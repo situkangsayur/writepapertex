@@ -29,6 +29,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   late final LatexProject _project = widget.project;
 
+  /// True while a file is being put into the editor, so filling it does not
+  /// count as the user typing.
+  bool _loadingFile = false;
+
   /// Null until checked; false means there is no engine on this platform.
   bool? _engineReady;
   String? _openFile;
@@ -44,8 +48,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   void initState() {
     super.initState();
+    _editor.addListener(_onEdited);
     _openRelative(_project.mainFile);
     _checkEngine();
+  }
+
+  /// Marks the file as changed.
+  ///
+  /// Without this the save button stayed disabled forever and the modified
+  /// dot never appeared, so the only way to save was to compile.
+  void _onEdited() {
+    if (_loadingFile || _dirty) return;
+    setState(() => _dirty = true);
   }
 
   /// Android has no TeX Live and Tectonic is not bundled yet, so compilation
@@ -58,6 +72,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   @override
   void dispose() {
+    _editor.removeListener(_onEdited);
     _editor.dispose();
     super.dispose();
   }
@@ -67,11 +82,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     final file = File(_project.absolute(relative));
     final text = file.existsSync() ? await file.readAsString() : '';
     if (!mounted) return;
+    _loadingFile = true;
     setState(() {
       _openFile = relative;
       _editor.text = text;
       _dirty = false;
     });
+    _loadingFile = false;
     await _rescanProject();
   }
 

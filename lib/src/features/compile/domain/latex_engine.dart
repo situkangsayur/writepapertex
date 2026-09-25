@@ -90,8 +90,18 @@ class LatexLogParser {
   static final RegExp _warning = RegExp(r'^(?:LaTeX|Package|Class)\s+(?:\w+\s+)?Warning:\s*(.*)$');
   static final RegExp _warningLine = RegExp(r'input line (\d+)');
 
+  /// Reads [log] into messages, without repeats.
+  ///
+  /// The same error usually appears twice: once in latexmk's own output and
+  /// once in the engine's `.log`, both of which are read. Showing it twice
+  /// makes the error panel look like there are two problems.
   List<LatexMessage> parse(String log) {
     final out = <LatexMessage>[];
+    final seen = <String>{};
+    void add(LatexMessage m) {
+      if (seen.add('${m.severity}|${m.file}|${m.line}|${m.text}')) out.add(m);
+    }
+
     for (final raw in const LineSplitter().convert(log)) {
       final line = raw.trimRight();
       if (line.isEmpty) continue;
@@ -100,7 +110,7 @@ class LatexLogParser {
       if (fileLine != null && !line.startsWith('!')) {
         final text = fileLine.group(3)!.trim();
         if (text.isNotEmpty) {
-          out.add(
+          add(
             LatexMessage(
               severity: LatexSeverity.error,
               text: text,
@@ -114,7 +124,7 @@ class LatexLogParser {
 
       final bang = _bang.firstMatch(line);
       if (bang != null) {
-        out.add(LatexMessage(severity: LatexSeverity.error, text: bang.group(1)!.trim()));
+        add(LatexMessage(severity: LatexSeverity.error, text: bang.group(1)!.trim()));
         continue;
       }
 
@@ -122,7 +132,7 @@ class LatexLogParser {
       if (warning != null) {
         final text = warning.group(1)!.trim();
         final at = _warningLine.firstMatch(text);
-        out.add(
+        add(
           LatexMessage(
             severity: LatexSeverity.warning,
             text: text,

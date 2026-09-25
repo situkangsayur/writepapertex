@@ -113,6 +113,89 @@ dengan tangan, terutama di tablet.
 
 ---
 
+## Jurang fitur terhadap Overleaf dan TeXstudio
+
+Ditulis setelah memeriksa keduanya, supaya jelas apa yang belum ada dan mana
+yang memang tidak akan dikejar.
+
+### Yang ada di Overleaf
+
+| Fitur | Keadaan di sini |
+|---|---|
+| Pratinjau PDF berdampingan | **Ada** |
+| Error ditampilkan beserta barisnya | **Ada**, tapi di bilah atas, belum sebagai tanda di baris kodenya |
+| Kompilasi otomatis saat berubah | Belum |
+| Templat jurnal (ribuan, resmi dari penerbit) | Baru tiga templat sendiri |
+| Penyunting visual seperti Word | Belum — layak dipertimbangkan justru untuk tablet |
+| Kolaborasi banyak orang serentak | **Tidak dikejar.** Butuh server; ini penyunting lokal. Kolaborasi lewat git sudah cukup |
+| Track changes dan komentar | Belum; bisa dibuat di atas git tanpa server |
+| Riwayat versi | Lewat git (Fase 6) |
+| AI menjelaskan error kompilasi | Belum; menarik, dan kebetulan sejalan dengan rencana plugin di ReadPaper |
+
+### Yang ada di autocomplete TeXstudio
+
+Ini bagian yang paling layak ditiru, karena TeXstudio sudah menyelesaikan
+masalah yang sama dengan rapi.
+
+- [ ] **Format CWL** (*completion word list*) — format dari Kile yang dipakai
+      TeXstudio, memuat daftar perintah beserta posisi placeholder-nya. Kalau
+      kita membacanya, ribuan berkas CWL paket yang sudah ada bisa langsung
+      dipakai, dan daftar perintah bawaan kita yang ditulis tangan tidak perlu
+      tumbuh selamanya. **Ini yang paling besar hasilnya.**
+- [ ] **Muat pelengkapan mengikuti `\usepackage`** — TeXstudio membaca CWL
+      paket yang dipakai dokumen itu saja, jadi daftarnya relevan, bukan
+      seluruh isi TeX Live
+- [ ] **Placeholder yang bisa dilompati dengan Tab** — `\frac{•}{•}`: sekarang
+      kursor hanya mendarat di satu tempat, sisanya harus dicari sendiri
+- [ ] **Peringatan `\ref` ke label yang tidak ada** — kita sudah membaca
+      seluruh label proyek untuk pelengkapan, jadi memeriksanya tinggal
+      selangkah
+- [ ] **Peringatan `\usepackage` ke paket yang tidak terpasang**
+- [ ] Pelengkapan dari kata yang sudah ada di dokumen itu sendiri
+- [x] Pelengkapan `\ref`/`\cite` dari berkas proyek — sudah ada
+- [x] Melengkapi `\begin` dengan `\end`-nya sekaligus — sudah ada
+
+### Keputusan yang diambil dari perbandingan ini
+
+1. **Adopsi CWL** sebagai sumber pelengkapan, jangan menumbuhkan daftar
+   bawaan dengan tangan. Daftar bawaan tetap ada sebagai cadangan untuk
+   ketika berkas CWL tidak tersedia.
+2. **Kolaborasi serentak tidak dikejar.** Itu menuntut server, dan proyek ini
+   penyunting lokal yang menyimpan ke git. Kolaborasi lewat git sudah
+   menjawab kebutuhan yang sama tanpa infrastruktur.
+3. **Penyunting visual layak dipertimbangkan untuk tablet**, bukan meniru
+   Overleaf begitu saja: mengetik LaTeX dengan papan tik layar memang berat,
+   dan di situlah mode visual paling berguna.
+
+### Sumber
+
+- [Overleaf — Rich Text editor](https://www.overleaf.com/blog/the-updated-rich-text-editor-simplifies-team-collaboration)
+- [Overleaf — Track changes](https://docs.overleaf.com/collaborating/track-changes)
+- [Overleaf — Premium features](https://docs.overleaf.com/getting-started/free-and-premium-plans/premium-features)
+- [TeXstudio — Background information (format CWL)](https://texstudio-org.github.io/background.html)
+- [TeXstudio — FAQ (pemuatan CWL otomatis)](https://github.com/texstudio-org/texstudio/wiki/Frequently-Asked-Questions)
+- [Berkas CWL untuk TeXstudio](https://github.com/brianschubert/texstudio-completion)
+
+---
+
+## Bug yang ditemukan saat pengujian menyeluruh (2026-09-25)
+
+Ditemukan dengan menjalankan aplikasinya dan mencoba setiap fitur satu per
+satu, bukan dari tes.
+
+- [x] **Tombol Simpan selamanya mati.** `_dirty` tidak pernah diisi `true`,
+      jadi penanda perubahan tidak pernah muncul dan satu-satunya cara
+      menyimpan adalah dengan mengompilasi.
+- [x] **Fokus hilang setelah menerima saran.** Mengetuk sebuah saran
+      memindahkan fokus ke chip-nya, sehingga ketikan berikutnya dan Ctrl+S
+      tidak masuk ke mana-mana.
+- [x] **Setiap error tampil dua kali.** Pesan yang sama ada di keluaran
+      latexmk dan di berkas `.log`, dan keduanya dibaca; sekarang
+      dihilangkan duplikatnya.
+- [x] **Keterangan saran terpotong separuh** karena tinggi chip-nya kurang.
+
+---
+
 ## Lintas fase
 
 - [x] Lisensi AGPL-3.0-or-later
