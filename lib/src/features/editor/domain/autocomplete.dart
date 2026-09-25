@@ -46,10 +46,17 @@ class CompletionRequest {
 /// that actually save time: nobody misremembers `\section`, everybody
 /// misremembers whether the figure was `fig:overview` or `fig:overview-2`.
 class LatexAutocomplete {
-  const LatexAutocomplete({this.labels = const <String>[], this.citationKeys = const <String>[]});
+  const LatexAutocomplete({
+    this.labels = const <String>[],
+    this.citationKeys = const <String>[],
+    this.packageCommands = const <Completion>[],
+  });
 
   final List<String> labels;
   final List<String> citationKeys;
+
+  /// Read from the CWL files of the packages this document loads.
+  final List<Completion> packageCommands;
 
   static final RegExp _command = RegExp(r'\\([a-zA-Z@]*)$');
   static final RegExp _braceArg = RegExp(r'\\([a-zA-Z@]+)\{([^{}]*)$');
@@ -95,8 +102,16 @@ class LatexAutocomplete {
   /// The suggestions for [request], best first.
   List<Completion> suggest(CompletionRequest request) {
     final source = switch (request.context) {
-      CompletionContext.command => LatexLanguage.commands,
-      CompletionContext.environment => LatexLanguage.environments,
+      // Built-ins first: those are the commands everyone reaches for, and a
+      // package must not push \section down the list.
+      CompletionContext.command => <Completion>[
+        ...LatexLanguage.commands,
+        ...packageCommands.where((c) => c.kind == CompletionKind.command),
+      ],
+      CompletionContext.environment => <Completion>[
+        ...LatexLanguage.environments,
+        ...packageCommands.where((c) => c.kind == CompletionKind.environment),
+      ],
       CompletionContext.reference => <Completion>[
         for (final l in labels)
           Completion(label: l, insert: l, kind: CompletionKind.reference, detail: 'label'),
@@ -115,7 +130,11 @@ class LatexAutocomplete {
 
     final starts = <Completion>[];
     final contains = <Completion>[];
+    final seen = <String>{};
     for (final c in source) {
+      // A package may redefine a built-in; the first definition wins, so the
+      // list never shows the same name twice.
+      if (!seen.add(c.label)) continue;
       // The label carries a leading backslash for commands; the typed prefix
       // never does.
       final plain = c.label.startsWith('\\') ? c.label.substring(1) : c.label;
@@ -212,6 +231,34 @@ List<String> scanLabels(String text) => RegExp(
 List<String> scanCitationKeys(String bib) => RegExp(
   r'@\w+\s*\{\s*([^,\s}]+)\s*,',
 ).allMatches(bib).map((m) => m.group(1)!).toSet().toList(growable: false);
+
+/// A `\ref` pointing at a label no document in the project defines.
+///
+/// Cheap to find, because every label is already collected for completion —
+/// and an undefined reference compiles into the PDF as a bare `??`, which is
+/// easy to miss until someone else reads it.
+@immutable
+class DanglingReference {
+  const DanglingReference({required this.key, required this.line});
+
+  final String key;
+  final int line;
+}
+
+/// Finds `\ref`-like commands whose key is not in [known].
+List<DanglingReference> findDanglingReferences(String source, Set<String> known) {
+  final out = <DanglingReference>[];
+  final pattern = RegExp(r'\\(?:ref|eqref|autoref|pageref|nameref)\{([^}]*)\}');
+  final lines = source.split(RegExp(r'\r\n|\r|\n'));
+  for (var i = 0; i < lines.length; i++) {
+    for (final match in pattern.allMatches(lines[i])) {
+      final key = match.group(1)!.trim();
+      if (key.isEmpty || known.contains(key)) continue;
+      out.add(DanglingReference(key: key, line: i + 1));
+    }
+  }
+  return out;
+}
 
 /// Builds the text of a `\begin{...}...\end{...}` pair.
 ///

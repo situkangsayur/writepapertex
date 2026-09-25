@@ -84,3 +84,56 @@ Sama dengan ReadPaper, dan dengan alasan yang sama: boleh dipakai, diubah,
 bahkan dijual, tapi tidak boleh ditutup. Kalau nanti ada layanan kompilasi
 yang dijalankan sebagai server, AGPL yang membuat sumbernya tetap wajib
 terbuka — dan layanan itu memang salah satu cadangan di KT-2.
+
+---
+
+## KT-6 — Git apa pun, bukan hanya GitHub
+
+**Status:** ditetapkan sebagai lingkup; belum ada kodenya.
+
+Proyek LaTeX disimpan di git — GitHub, **atau git lain, atau Gitea yang
+dipasang sendiri**. Itu mengubah rancangannya, karena ReadPaper menyelesaikan
+masalah yang mirip dengan cara yang **tidak** bisa dipakai ulang di sini.
+
+### Kenapa cara ReadPaper tidak cukup
+
+ReadPaper memakai **GitHub REST API** di Android, karena Android tidak punya
+biner `git`. Itu berhasil justru karena ReadPaper hanya perlu bicara dengan
+GitHub. Begitu Gitea dan GitLab ikut masuk, jalan itu berarti menulis satu
+adaptor per penyedia — dan setiap penyedia baru menjadi pekerjaan baru
+selamanya.
+
+### Yang dipilih
+
+| Platform | Cara |
+|---|---|
+| Linux, Windows, macOS | Panggil biner `git`. Otomatis bekerja dengan GitHub, GitLab, Gitea, Bitbucket, remote SSH biasa, bahkan folder lokal |
+| Android | **Protokol git smart HTTP**, diterapkan sendiri |
+
+Git smart HTTP adalah protokol yang sama yang dipakai `git clone https://…`
+ke server mana pun. Satu penerapan bekerja untuk **semua** host, termasuk
+Gitea yang dipasang di jaringan sendiri — tanpa satu pun adaptor khusus
+penyedia.
+
+### Yang dikorbankan
+
+Ini jelas lebih berat daripada memanggil REST API: perlu menegosiasi
+kemampuan, membaca dan menulis berkas *pack*, serta menghitung ulang objek.
+Tapi biayanya dibayar sekali, sementara pendekatan adaptor menagih setiap kali
+ada penyedia baru — dan permintaannya memang "GitHub ataupun git lainnya atau
+git lokal seperti Gitea".
+
+### Urutan yang masuk akal
+
+1. **Desktop lebih dulu** lewat biner `git`. Itu langsung memenuhi seluruh
+   kebutuhan di Linux dan Windows, dan bisa diuji terhadap Gitea sungguhan.
+2. **Android: clone dan pull** dulu (hanya butuh membaca pack), yang sudah
+   cukup untuk menulis dari tablet atas proyek yang disiapkan di komputer.
+3. **Android: commit dan push** terakhir, karena menulis pack jauh lebih
+   rumit daripada membacanya.
+
+### Cadangan
+
+Kalau smart HTTP ternyata terlalu berat, cadangannya adalah memakai `dart_git`
+atau pustaka sejenis bila sudah cukup matang — **perlu dicek saat tahapnya
+tiba**, jangan diandalkan sekarang.

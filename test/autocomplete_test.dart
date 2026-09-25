@@ -149,6 +149,8 @@ void main() {
     });
   });
 
+  _danglingTests();
+
   group('insertion', () {
     test('commands taking an argument park the caret inside the braces', () {
       final section = LatexLanguage.commands.firstWhere((c) => c.label == r'\section');
@@ -169,6 +171,43 @@ void main() {
         expect(c.cursorOffset, isNotNull, reason: '${c.label} tidak menyebut posisi kursor');
         expect(c.cursorOffset, lessThanOrEqualTo(c.insert.length));
       }
+    });
+  });
+}
+
+void _danglingTests() {
+  group('dangling references', () {
+    test('a \\ref to a label nobody defines is reported, with its line', () {
+      final found = findDanglingReferences(
+        '''
+\\label{ada}
+Lihat \\ref{ada} dan \\ref{tidakAda}.
+''',
+        <String>{'ada'},
+      );
+      expect(found.length, 1);
+      expect(found.single.key, 'tidakAda');
+      expect(found.single.line, 2);
+    });
+
+    test('every \\ref-like command is checked', () {
+      final found = findDanglingReferences(
+        r'\eqref{a} \autoref{b} \pageref{c} \nameref{d}',
+        const <String>{},
+      );
+      expect(found.map((d) => d.key).toList()..sort(), <String>['a', 'b', 'c', 'd']);
+    });
+
+    test('an empty key is half-typed, not a mistake', () {
+      expect(findDanglingReferences(r'\ref{}', const <String>{}), isEmpty);
+    });
+
+    test('a document with no references is quiet', () {
+      expect(findDanglingReferences('Teks biasa.', const <String>{}), isEmpty);
+    });
+
+    test('\\cite is not a reference and is left alone', () {
+      expect(findDanglingReferences(r'\cite{belumAda}', const <String>{}), isEmpty);
     });
   });
 }

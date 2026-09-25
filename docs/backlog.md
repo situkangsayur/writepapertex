@@ -18,7 +18,7 @@ satu hal menghalangi segalanya di Android: tidak ada TeX Live di sana.
 |---|---|---|
 | **A** | Editor, proyek, penampil PDF, kompilasi di Linux | Semua bagian ini bisa dibuat **dan dibuktikan** hari ini, karena TeX Live sudah ada di mesin pengembangan |
 | **B** | Tectonic untuk Android | Palang pintu sesungguhnya. Sampai ini terbukti, versi tablet tidak bisa mengompilasi apa pun (lihat KT-2) |
-| **C** | Tata letak tablet, muat proyek dari GitHub | Butuh A; memindahkan pola yang sudah terbukti di ReadPaper |
+| **C** | Tata letak tablet, muat proyek dari git — GitHub, GitLab, atau Gitea sendiri | Butuh A. Desktop lewat biner `git` bisa langsung; Android butuh smart HTTP (KT-6) |
 | **D** | Perkakas tabel, pelengkapan otomatis lanjutan, SyncTeX | Kenyamanan, setelah dasarnya kokoh |
 | **E** | Windows | Paling akhir, sesuai permintaan |
 
@@ -95,12 +95,26 @@ dengan tangan, terutama di tablet.
 - [~] Bilah error di atas editor dengan nomor barisnya; belum bisa diketuk
       untuk melompat ke sana
 
-## Fase 6 — GitHub
+## Fase 6 — Git (GitHub, GitLab, Gitea, atau remote apa pun)
 
-- [ ] Muat proyek dari repositori
-- [ ] Commit dan push perubahan
-- [ ] Profil repositori, sama seperti ReadPaper
-- [ ] Android tidak punya biner git: pakai GitHub REST API, seperti ReadPaper
+Proyek disimpan di git. Bukan hanya GitHub: **git lain, dan git lokal seperti
+Gitea yang dipasang sendiri**, harus ikut jalan. Alasan dan pilihan teknisnya
+di KT-6 — ringkasnya, cara ReadPaper (GitHub REST API) tidak dipakai ulang di
+sini karena berarti satu adaptor per penyedia, selamanya.
+
+- [ ] **Desktop: panggil biner `git`.** Langsung bekerja dengan GitHub,
+      GitLab, Gitea, remote SSH biasa, bahkan folder lokal
+- [ ] Uji terhadap Gitea sungguhan, bukan hanya GitHub
+- [ ] Profil repositori (nama, remote, cabang, identitas commit), pola sama
+      dengan ReadPaper
+- [ ] Clone, pull, commit, push dari dalam aplikasi
+- [ ] Tampilkan perubahan lokal sebelum commit
+- [ ] **Android: protokol git smart HTTP**, diterapkan sendiri — satu
+      penerapan untuk semua host. Clone dan pull dulu; commit dan push
+      belakangan karena menulis *pack* jauh lebih rumit daripada membacanya
+- [ ] Berkas hasil build sudah otomatis di luar direktori proyek, jadi
+      `git status` tidak akan penuh `.aux` (lihat KT-4)
+- [ ] `.gitignore` disiapkan saat proyek dibuat dari templat
 
 ## Fase 7 — Tablet & desktop
 
@@ -137,19 +151,25 @@ yang memang tidak akan dikejar.
 Ini bagian yang paling layak ditiru, karena TeXstudio sudah menyelesaikan
 masalah yang sama dengan rapi.
 
-- [ ] **Format CWL** (*completion word list*) — format dari Kile yang dipakai
-      TeXstudio, memuat daftar perintah beserta posisi placeholder-nya. Kalau
-      kita membacanya, ribuan berkas CWL paket yang sudah ada bisa langsung
-      dipakai, dan daftar perintah bawaan kita yang ditulis tangan tidak perlu
-      tumbuh selamanya. **Ini yang paling besar hasilnya.**
-- [ ] **Muat pelengkapan mengikuti `\usepackage`** — TeXstudio membaca CWL
-      paket yang dipakai dokumen itu saja, jadi daftarnya relevan, bukan
-      seluruh isi TeX Live
+- [x] **Format CWL** (*completion word list*) — sudah dibaca, termasuk
+      argumen menjadi kurung kosong, `\begin{...}` menjadi lingkungan,
+      akhiran klasifikasi TeXstudio (`#*`, `#m`) dibuang, penanda
+      `%<...%>` dibuang, dan `#include:` diikuti. Sembilan berkas CWL
+      dibundel (booktabs, tabularx, longtable, multirow, graphicx, amsmath,
+      siunitx, hyperref, array); berkas CWL dari TeX Live tinggal ditaruh di
+      folder asetnya tanpa mengubah kode. 19 tes.
+- [x] **Muat pelengkapan mengikuti `\usepackage`** — hanya paket yang
+      benar-benar dimuat dokumen itu yang dibaca. Dicari di tiga tempat
+      berurutan: `.writepapertex/cwl/` milik proyek, folder pengguna, lalu
+      yang dibundel — jadi sebuah proyek bisa menimpa yang bawaan
+- [ ] Baca CWL dari TeX Live yang terpasang secara otomatis (sekarang harus
+      disalin sendiri)
 - [ ] **Placeholder yang bisa dilompati dengan Tab** — `\frac{•}{•}`: sekarang
       kursor hanya mendarat di satu tempat, sisanya harus dicari sendiri
-- [ ] **Peringatan `\ref` ke label yang tidak ada** — kita sudah membaca
-      seluruh label proyek untuk pelengkapan, jadi memeriksanya tinggal
-      selangkah
+- [x] **Peringatan `\ref` ke label yang tidak ada**, dengan nomor barisnya.
+      LaTeX tidak gagal karena ini — ia mencetak `??` lalu jalan terus, dan
+      itu mudah luput sampai orang lain yang membacanya. Berlaku untuk
+      `\ref`, `\eqref`, `\autoref`, `\pageref`, dan `\nameref`
 - [ ] **Peringatan `\usepackage` ke paket yang tidak terpasang**
 - [ ] Pelengkapan dari kata yang sudah ada di dokumen itu sendiri
 - [x] Pelengkapan `\ref`/`\cite` dari berkas proyek — sudah ada

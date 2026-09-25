@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../../core/utils/layout_size.dart';
 import '../../compile/data/latexmk_engine.dart';
 import '../../compile/domain/latex_engine.dart';
+import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
 import '../../editor/presentation/latex_editor.dart';
 import '../domain/latex_project.dart';
@@ -40,6 +41,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   bool _compiling = false;
   CompileResult? _result;
   LatexAutocomplete _autocomplete = const LatexAutocomplete();
+  late final CwlRepository _cwl = CwlRepository(projectDir: _project.directory);
+
+  /// `\ref` keys nothing in the project defines.
+  List<DanglingReference> _dangling = const <DanglingReference>[];
 
   /// Kept across rebuilds so a recompile does not throw the writer back to
   /// page one — which is what makes an iterative document unbearable.
@@ -115,11 +120,19 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       }
     }
     if (!mounted) return;
+
+    // Only the packages this document loads are read, so the list stays the
+    // relevant one rather than everything TeX Live could offer.
+    final packageCommands = await _cwl.forDocument(_editor.text);
+    if (!mounted) return;
+
     setState(() {
       _autocomplete = LatexAutocomplete(
         labels: labels.toList()..sort(),
         citationKeys: keys.toList()..sort(),
+        packageCommands: packageCommands,
       );
+      _dangling = findDanglingReferences(_editor.text, labels);
     });
   }
 
@@ -202,6 +215,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       body: Column(
         children: <Widget>[
           if (_engineReady == false) _noEngineBar(scheme),
+          if (_dangling.isNotEmpty) _danglingBar(scheme),
           if (errors.isNotEmpty) _errorBar(errors, scheme),
           Expanded(
             child: Row(
@@ -246,6 +260,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                         'dibundel. Menulis, menyimpan, dan membuka proyek tetap jalan.'
                   : _engine.unavailableReason,
               style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// Warns about references that will come out as `??` in the PDF.
+  ///
+  /// LaTeX does not fail on these; it prints `??` and carries on, which is
+  /// easy to miss until a reader finds it.
+  Widget _danglingBar(ColorScheme scheme) => Material(
+    color: scheme.secondaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.link_off, size: 18, color: scheme.onSecondaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _dangling.length == 1
+                  ? 'Rujukan ke label yang tidak ada: '
+                        '${_dangling.single.key} (baris ${_dangling.single.line})'
+                  : '${_dangling.length} rujukan ke label yang tidak ada: '
+                        '${_dangling.take(3).map((d) => d.key).join(', ')}'
+                        '${_dangling.length > 3 ? ', …' : ''}',
+              style: TextStyle(color: scheme.onSecondaryContainer, fontSize: 12.5),
             ),
           ),
         ],
