@@ -23,6 +23,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // arm64 only. A plugin can drag in 32-bit stubs that make the APK
+        // claim support it does not have, and those devices install it then
+        // crash on launch.
+        ndk {
+            abiFilters.clear()
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {

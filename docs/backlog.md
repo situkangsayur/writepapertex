@@ -1,7 +1,8 @@
 # WritePaperTeX — Backlog
 
-Status per 2026-09-25. Baru dimulai hari ini. Yang sudah jalan dan teruji
-hanyalah mesin kompilasinya; sisanya rencana.
+Status per 2026-09-25. Dimulai hari ini. Yang sudah jalan dan dibuktikan di
+desktop: proyek, editor, pelengkapan otomatis, kompilasi, dan pratinjau PDF.
+Di Android semuanya jalan kecuali kompilasi — lihat KT-2.
 
 Legenda: `[x]` selesai · `[~]` sebagian · `[ ]` belum.
 
@@ -44,22 +45,33 @@ sungguhan hari ini alih-alih ditebak.
 ## Fase 2 — Editor
 
 - [ ] Penyorotan sintaks LaTeX: perintah, lingkungan, matematika, komentar
-- [ ] **Pelengkapan otomatis**: perintah, nama lingkungan, kunci `\ref`/`\cite`
-      yang dibaca dari berkas proyek sendiri
-- [ ] `\begin{...}` melengkapi `\end{...}` sendiri
+- [x] **Pelengkapan otomatis**: perintah, nama lingkungan, dan kunci
+      `\ref`/`\cite` yang dibaca dari berkas proyek sendiri — itulah
+      pelengkapan yang benar-benar menghemat waktu; tidak ada yang lupa
+      `\section`, semua orang lupa apakah gambarnya `fig:overview` atau
+      `fig:overview-2`. Diuji di desktop sungguhan: `\sec` memunculkan tiga
+      perintah, `\ref{tab` memunculkan label dari berkas proyeknya.
+- [x] `\begin{...}` melengkapi `\end{...}` sendiri, dengan kursor mendarat
+      di dalam badannya — lupa `\end{...}` adalah cara paling sering sebuah
+      berkas LaTeX berhenti terkompilasi
 - [ ] Nomor baris, dan error ditandai di baris yang bersangkutan
 - [ ] Cari dan ganti
 - [ ] Urungkan/ulangi yang layak dipakai
-- [ ] Papan tik tambahan di layar sentuh untuk `\`, `{`, `}`, `$`, `&` — di
-      papan tik Android, karakter-karakter ini semuanya di balik satu tombol
-      lagi, dan itu melumpuhkan pengetikan LaTeX
+- [x] Papan tik tambahan di layar sentuh untuk `\`, `{`, `}`, `$`, `&`, `%`,
+      `_`, `^`, `~`, `\\` — di papan tik Android karakter-karakter ini
+      semuanya di balik satu tombol lagi, dan itu melumpuhkan pengetikan LaTeX
 
 ## Fase 3 — Proyek
 
-- [ ] Buat proyek baru dari templat: artikel, laporan, IEEE, skripsi
-- [ ] Buka folder yang sudah ada
-- [ ] Pohon berkas, dengan berkas hasil build disembunyikan
-- [ ] Tentukan berkas utama; deteksi otomatis dari `\documentclass`
+- [x] Buat proyek baru dari templat: artikel, artikel dengan tabel, laporan
+- [ ] Templat IEEE dan skripsi
+- [x] Buka folder yang sudah ada; di desktop juga lewat argumen baris perintah
+      (`writepapertex ~/tulisan/paper`)
+- [x] Pohon berkas, dengan berkas hasil build disembunyikan
+- [x] Berkas utama dideteksi dari `\documentclass`, bukan dari namanya — menebak
+      dari nama akan memilih `main.tex` bahkan pada proyek yang titik masuknya
+      `skripsi.tex`
+- [ ] Ganti berkas utama secara manual
 - [ ] Beberapa berkas `.tex` dengan `\input`/`\include`
 - [ ] Simpan otomatis
 
@@ -76,11 +88,12 @@ dengan tangan, terutama di tablet.
 
 ## Fase 5 — Penampil PDF
 
-- [ ] Pratinjau berdampingan dengan editor (`pdfrx`, sama seperti ReadPaper)
-- [ ] Posisi gulir dipertahankan saat dikompilasi ulang — tanpa ini, setiap
-      kompilasi melempar penulis kembali ke halaman 1
+- [x] Pratinjau berdampingan dengan editor (`pdfrx`, sama seperti ReadPaper)
+- [~] Halaman dipertahankan saat dikompilasi ulang; posisi gulir di dalam
+      halaman belum
 - [ ] Lompat ke halaman, zoom
-- [ ] Panel error yang bisa diketuk untuk melompat ke barisnya
+- [~] Bilah error di atas editor dengan nomor barisnya; belum bisa diketuk
+      untuk melompat ke sana
 
 ## Fase 6 — GitHub
 
@@ -91,7 +104,8 @@ dengan tangan, terutama di tablet.
 
 ## Fase 7 — Tablet & desktop
 
-- [ ] Tata letak tablet: pohon berkas · editor · PDF berdampingan
+- [x] Tata letak tablet: pohon berkas · editor · PDF berdampingan, dengan
+      pohon berkas masuk laci di bawah 1100 dp
 - [ ] Dukungan stylus dan papan tik luar
 - [ ] Pintasan papan tik
 - [ ] Build Linux (AppImage/deb)
@@ -103,6 +117,10 @@ dengan tangan, terutama di tablet.
 
 - [x] Lisensi AGPL-3.0-or-later
 - [ ] Uji pada perangkat sungguhan (tablet Moto Pad 60 Neo)
-- [ ] Publikasi APK ke `http://10.100.21.22:8899`, pola sama dengan ReadPaper
+- [x] Publikasi APK ke `http://10.100.21.22:8899`, pola sama dengan ReadPaper
+- [ ] **Belum terpasang di perangkat sungguhan.** MIUI menolak pemasangan
+      paket *baru* lewat USB (`INSTALL_FAILED_USER_RESTRICTED`); ReadPaper
+      lolos karena itu pembaruan paket yang sudah ada. Pasang dari 8899 lewat
+      peramban.
 - [ ] Rilis GitHub
 - [ ] Dwibahasa (Indonesia/Inggris), sejak awal supaya tidak menumpuk utang

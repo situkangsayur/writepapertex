@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Flutter hanya menambahkannya ke manifest debug; rilis butuh ini sendiri. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="writepapertex"
+        android:label="WritePaperTeX"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
