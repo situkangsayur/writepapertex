@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.5'
+          channel: stable
+          cache: true
+
+      # The compilation tests run for real against this, rather than skipping.
+      - name: Install TeX Live
+        run: sudo apt-get update && sudo apt-get install -y texlive-xetex latexmk
+
+      - run: flutter pub get
+      - run: dart format --line-length 100 --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
