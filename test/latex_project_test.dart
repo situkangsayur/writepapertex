@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:writepapertex/src/features/compile/domain/latex_engine.dart';
 import 'package:writepapertex/src/features/project/domain/latex_project.dart';
 
 void main() {
@@ -14,6 +15,65 @@ void main() {
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(content);
   }
+
+  group('gitignore', () {
+    test('proyek baru dapat .gitignore LaTeX', () async {
+      final target = Directory(p.join(dir.path, 'baru'));
+      await ProjectTemplate.all.first.create(target.path);
+
+      final text = File(p.join(target.path, '.gitignore')).readAsStringSync();
+      expect(text, contains('*.aux'));
+      expect(text, contains('*.synctex.gz'));
+      expect(text, contains('.writepapertex/'));
+    });
+
+    test('PDF sengaja tidak diabaikan', () {
+      // Yang membaca paper adalah pembimbing tanpa TeX; PDF-nya harus ikut.
+      final lines = latexGitignore
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty && !l.startsWith('#'));
+      expect(lines, isNot(contains('*.pdf')));
+      expect(lines, isNot(contains('/*.pdf')));
+    });
+  });
+
+  group('menebak berkas utama', () {
+    const proposal = r'''
+\documentclass[11pt,a4paper]{report}
+\begin{document}
+\maketitle
+\tableofcontents
+\input{bab/01-pendahuluan}
+\input{bab/02-tinjauan}
+\bibliography{pustaka}
+\end{document}
+''';
+    const gambar = r'''
+\documentclass[border=4pt]{standalone}
+\begin{document}
+\begin{tikzpicture}\end{tikzpicture}
+\end{document}
+''';
+
+    test('gambar standalone kalah dari dokumen utama', () {
+      expect(
+        LatexProject.mainFileScore('proposal.tex', proposal),
+        greaterThan(LatexProject.mainFileScore('gambar/src/alur-penelitian.tex', gambar)),
+      );
+    });
+
+    test('berkas tanpa documentclass bukan calon', () {
+      expect(LatexProject.mainFileScore('bab/01-pendahuluan.tex', '\\section{Awal}'), 0);
+    });
+
+    test('yang di akar menang dari yang dalam, isinya sama', () {
+      expect(
+        LatexProject.mainFileScore('main.tex', proposal),
+        greaterThan(LatexProject.mainFileScore('draf/lama/main.tex', proposal)),
+      );
+    });
+  });
 
   group('finding the main file', () {
     test('is the one declaring a document class, whatever it is called', () async {

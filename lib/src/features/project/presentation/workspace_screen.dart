@@ -14,19 +14,34 @@ import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
 import '../../editor/presentation/latex_editor.dart';
 import '../../git/data/git_cli_backend.dart';
+import '../../git/data/git_ffi_backend.dart';
 import '../../git/domain/git_backend.dart';
 import '../../git/presentation/git_panel.dart';
 import '../../table/presentation/table_editor_sheet.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import '../data/workspace_store.dart';
 import '../domain/latex_project.dart';
+import '../domain/project_files.dart';
+import '../domain/project_profile.dart';
+import 'add_file_sheet.dart';
+import 'project_switcher.dart';
 
 /// Everything at once: files on the left, source in the middle, PDF on the
 /// right — as much of it as the window can hold.
 class WorkspaceScreen extends StatefulWidget {
-  const WorkspaceScreen({required this.project, super.key});
+  const WorkspaceScreen({
+    required this.project,
+    required this.profile,
+    required this.store,
+    super.key,
+  });
 
   final LatexProject project;
+
+  /// Proyek mana ini, dan ke repositori mana isinya dikirim.
+  final ProjectProfile profile;
+  final WorkspaceStore store;
 
   @override
   State<WorkspaceScreen> createState() => _WorkspaceScreenState();
@@ -41,9 +56,27 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final LatexEngine _engine = Platform.isAndroid || Platform.isIOS
       ? const TectonicEngine()
       : const LatexmkEngine();
-  final GitBackend _git = const GitCliBackend();
 
-  late final LatexProject _project = widget.project;
+  /// libgit2 di Android karena tidak ada biner git di sana; biner git di
+  /// desktop karena sudah terpasang dan sudah tahu kredensial penggunanya.
+  ///
+  /// Dibuat setiap kali dipakai, bukan sekali di awal: tokennya bisa berubah
+  /// saat pengguna menyuntingnya, dan backend yang masih memegang token lama
+  /// akan gagal tanpa alasan yang kelihatan.
+  GitBackend get _git => Platform.isAndroid || Platform.isIOS
+      ? GitFfiBackend(
+          token: _token,
+          username: _profile.httpsUsername,
+          authorName: _profile.authorName,
+          authorEmail: _profile.authorEmail,
+        )
+      : GitCliBackend(token: _token, username: _profile.httpsUsername);
+
+  LatexProject _project = const LatexProject(directory: '', mainFile: '', files: <String>[]);
+  late ProjectProfile _profile = widget.profile;
+
+  /// Token repositori proyek ini, kalau ada.
+  String? _token;
 
   /// True while a file is being put into the editor, so filling it does not
   /// count as the user typing.
@@ -75,9 +108,230 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   @override
   void initState() {
     super.initState();
+    _project = _withChosenMain(widget.project, widget.profile);
     _editor.addListener(_onEdited);
     _openRelative(_project.mainFile);
     _checkEngine();
+    _loadToken();
+  }
+
+  Future<void> _loadToken() async {
+    final token = await widget.store.tokenFor(_profile.id);
+    if (mounted) setState(() => _token = token);
+  }
+
+  /// Berpindah proyek tanpa meninggalkan ruang kerja.
+  Future<void> _switchProject() async {
+    final result = await showProjectSwitcher(context, store: widget.store, currentId: _profile.id);
+    if (result == null || !mounted) return;
+
+    switch (result) {
+      case OpenSomethingElse():
+        Navigator.of(context).pop();
+      case SwitchTo(:final profile):
+        if (_dirty) await _save();
+        final project = _withChosenMain(await LatexProject.open(profile.directory), profile);
+        await widget.store.remember(profile.directory);
+        if (!mounted) return;
+        setState(() {
+          _profile = profile;
+          _project = project;
+          // Hasil kompilasi proyek sebelumnya tidak berlaku di sini, dan
+          // memperlihatkannya sebagai pratinjau proyek baru akan menyesatkan.
+          _result = null;
+          _dangling = const <DanglingReference>[];
+          _pdfPage = 1;
+          _token = null;
+        });
+        await _openRelative(project.mainFile);
+        await _loadToken();
+    }
+  }
+
+  // ------------------------------------------------------- menambah berkas
+
+  /// Menambahkan berkas ke proyek: buat baru, atau ambil dari perangkat.
+  Future<void> _addFile() async {
+    final request = await showAddFileSheet(context);
+    if (request == null || !mounted) return;
+    switch (request) {
+      case CreateFile(:final kind, :final name):
+        await _createFile(kind, name);
+      case ImportFiles(:final graphicsOnly):
+        await _importFiles(graphicsOnly: graphicsOnly);
+    }
+  }
+
+  Future<void> _createFile(NewFileKind kind, String name) async {
+    final file = File(_project.absolute(name));
+    if (file.existsSync()) {
+      _say('$name sudah ada');
+      // Berkas yang sudah ada tetap dibuka: itu yang dimaui orang yang
+      // mengetikkan namanya lagi.
+      await _reloadProject();
+      await _openRelative(name);
+      return;
+    }
+    await file.parent.create(recursive: true);
+    await file.writeAsString(starterContent(kind, name));
+    await _wireUp(kind, name);
+    await _reloadProject();
+    await _openRelative(name);
+    _say('$name dibuat');
+  }
+
+  /// Menyalin berkas dari perangkat ke dalam folder proyek.
+  ///
+  /// Disalin, bukan dirujuk: di Android pemilih berkas menyerahkan salinan di
+  /// cache yang bisa hilang kapan saja, dan berkas di luar folder proyek tidak
+  /// akan ikut saat proyeknya diarsipkan atau dikirim ke git.
+  Future<void> _importFiles({required bool graphicsOnly}) async {
+    final picked = await FilePicker.pickFiles(
+      type: graphicsOnly ? FileType.image : FileType.any,
+      dialogTitle: graphicsOnly ? 'Pilih gambar' : 'Pilih berkas',
+    );
+    if (picked.isEmpty || !mounted) return;
+
+    final added = <String>[];
+    final failed = <String>[];
+    for (final file in picked) {
+      final source = file.path;
+      if (source == null) {
+        failed.add(file.name);
+        continue;
+      }
+      final graphic = isGraphic(file.name);
+      final dir = preferredAssetDir(_project.files, graphic: graphic);
+      final relative = _freeName(p.join(dir, sanitiseFileName(file.name)));
+      final target = File(_project.absolute(relative));
+      await target.parent.create(recursive: true);
+      try {
+        await File(source).copy(target.path);
+        added.add(relative);
+      } on FileSystemException {
+        failed.add(file.name);
+      }
+    }
+
+    for (final relative in added) {
+      if (isGraphic(relative)) {
+        await _insertFigure(relative);
+      } else if (kindForExtension(relative) case final kind?) {
+        await _wireUp(kind, relative);
+      }
+    }
+    await _reloadProject();
+
+    _say(
+      <String>[
+        if (added.isNotEmpty) '${added.length} berkas ditambahkan',
+        if (failed.isNotEmpty) '${failed.length} gagal disalin',
+      ].join(' · '),
+    );
+  }
+
+  /// Nama yang belum terpakai, dengan angka di belakang kalau perlu.
+  String _freeName(String relative) {
+    if (!File(_project.absolute(relative)).existsSync()) return relative;
+    final dir = p.dirname(relative);
+    final stem = p.basenameWithoutExtension(relative);
+    final ext = p.extension(relative);
+    for (var n = 2; n < 500; n++) {
+      final candidate = p.join(dir, '$stem-$n$ext');
+      if (!File(_project.absolute(candidate)).existsSync()) return candidate;
+    }
+    return relative;
+  }
+
+  /// Menyambungkan berkas baru ke berkas utama, supaya benar-benar terpakai.
+  ///
+  /// Berkas `.tex` yang tidak pernah di-`\input` dan `.bib` yang tidak pernah
+  /// disebut adalah keluhan yang paling sering muncul dari editor LaTeX mana
+  /// pun: berkasnya terlihat di daftar, tetapi tidak muncul di PDF.
+  Future<void> _wireUp(NewFileKind kind, String relative) async {
+    // Berkas pertama di proyek kosong menjadi berkas utamanya sendiri, dan
+    // sebuah dokumen yang meng-`\input` dirinya sendiri adalah rekursi yang
+    // membuat LaTeX berputar sampai kehabisan memori.
+    if (relative == _project.mainFile) return;
+
+    final mainPath = _project.absolute(_project.mainFile);
+    final mainOpen = _openFile == _project.mainFile;
+    if (mainOpen && _dirty) await _save();
+
+    final file = File(mainPath);
+    if (!file.existsSync()) return;
+    final before = await file.readAsString();
+    final biblatex = usesBiblatex(before);
+
+    var after = before;
+    if (preambleLineFor(kind, relative, usesBiblatex: biblatex) case final line?) {
+      after = insertOnce(after, line, preamble: true);
+    }
+    if (bodyLineFor(kind, relative, usesBiblatex: biblatex) case final line?) {
+      after = insertOnce(after, line, preamble: false);
+    }
+    if (after == before) return;
+
+    await file.writeAsString(after);
+    if (mainOpen) await _openRelative(_project.mainFile);
+  }
+
+  /// Menyisipkan `figure` di tempat kursor, atau di berkas utama.
+  Future<void> _insertFigure(String relative) async {
+    final mainPath = _project.absolute(_project.mainFile);
+    final source = File(mainPath).existsSync() ? await File(mainPath).readAsString() : '';
+    // graphicx harus ada di preamble, atau `\includegraphics` tidak dikenal.
+    if (source.isNotEmpty && !source.contains('{graphicx}')) {
+      await File(
+        mainPath,
+      ).writeAsString(insertOnce(source, '\\usepackage{graphicx}', preamble: true));
+      if (_openFile == _project.mainFile) await _openRelative(_project.mainFile);
+    }
+
+    final snippet = figureSnippet(relative);
+    if (_openFile != null && p.extension(_openFile!) == '.tex') {
+      final text = _editor.text;
+      final at = _insertionPoint(text);
+      _editor.value = TextEditingValue(
+        text: text.replaceRange(at, at, '$snippet\n'),
+        selection: TextSelection.collapsed(offset: at + snippet.length),
+      );
+      return;
+    }
+    // Tidak ada berkas .tex yang terbuka: gambarnya tetap harus muncul di
+    // suatu tempat, dan berkas utama adalah satu-satunya taruhan yang masuk
+    // akal.
+    final main = File(mainPath);
+    if (!main.existsSync()) return;
+    final text = await main.readAsString();
+    final at = bodyInsertionPoint(text);
+    await main.writeAsString(text.replaceRange(at, at, '$snippet\n'));
+  }
+
+  /// Memuat ulang daftar berkas proyek dari disk.
+  Future<void> _reloadProject() async {
+    final project = _withChosenMain(await LatexProject.open(_project.directory), _profile);
+    if (mounted) setState(() => _project = project);
+  }
+
+  /// Menghormati berkas utama yang dipilih sendiri oleh pengguna.
+  static LatexProject _withChosenMain(LatexProject project, ProjectProfile profile) {
+    final chosen = profile.mainFile;
+    if (chosen.isEmpty || !project.files.contains(chosen)) return project;
+    return project.copyWith(mainFile: chosen);
+  }
+
+  /// Menjadikan sebuah berkas sebagai yang dikompilasi.
+  Future<void> _setMainFile(String relative) async {
+    final saved = await widget.store.update(_profile.copyWith(mainFile: relative));
+    if (!mounted) return;
+    setState(() {
+      _profile = saved;
+      _project = _project.copyWith(mainFile: relative);
+      // Hasil lama milik berkas utama sebelumnya, jadi tidak lagi berlaku.
+      _result = null;
+    });
+    _say('$relative jadi berkas utama');
   }
 
   /// Marks the file as changed.
@@ -253,12 +507,84 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Future<void> _openGit() async {
-    await showGitPanel(context, directory: _project.directory, backend: _git);
+    await _save();
+
+    // Folder yang belum jadi repositori sebentar lagi akan di-`init` dari
+    // panel ini, dan commit pertamanya jangan sampai membawa berkas keluaran.
+    // Repositori yang sudah ada tidak disentuh: aturan abaikannya milik
+    // pemiliknya, bukan milik aplikasi ini.
+    final ignore = File(_project.absolute('.gitignore'));
+    if (!ignore.existsSync() && !await _git.isRepository(_project.directory)) {
+      await ignore.writeAsString(latexGitignore);
+      await _reloadProject();
+    }
+
+    if (!mounted) return;
+    await showGitPanel(
+      context,
+      directory: _project.directory,
+      backend: _git,
+      // Alamat yang tercatat di profil ditawarkan lebih dulu, supaya folder
+      // yang belum jadi repositori tidak perlu mengetiknya ulang.
+      suggestedRemote: _profile.remoteUrl,
+      branch: _profile.branch,
+      authorName: _profile.authorName,
+      authorEmail: _profile.authorEmail,
+      // Identitas kosong berarti commit-nya atas nama aplikasi; panelnya
+      // menawarkan jalan ke tempat mengisinya, bukan sekadar mengeluh.
+      onEditIdentity: _editIdentity,
+      onRemoteSet: (url) async {
+        final updated = await widget.store.update(_profile.copyWith(remoteUrl: url));
+        if (mounted) setState(() => _profile = updated);
+      },
+    );
+
+    // Menarik perubahan bisa membawa berkas baru dan mengubah yang terbuka.
+    // Tanpa muat ulang, daftar berkasnya masih memperlihatkan keadaan sebelum
+    // ditarik, dan orang menyangka tarikannya tidak berhasil.
+    if (!mounted) return;
+    await _reloadProject();
+    final open = _openFile;
+    if (open != null && !_dirty) {
+      final file = File(_project.absolute(open));
+      // Berkas yang sedang dibuka bisa saja terhapus oleh tarikan itu.
+      if (!file.existsSync()) {
+        await _openRelative(_project.mainFile);
+      } else {
+        final text = await file.readAsString();
+        if (mounted && text != _editor.text) {
+          _loadingFile = true;
+          setState(() => _editor.text = text);
+          _loadingFile = false;
+        }
+      }
+    }
+  }
+
+  /// Membuka penyunting alamat, token, dan identitas proyek ini.
+  Future<({String name, String email})?> _editIdentity() async {
+    final token = await widget.store.tokenFor(_profile.id);
+    if (!mounted) return null;
+    final result = await showRemoteEditor(context, profile: _profile, token: token);
+    if (result == null) return null;
+    final saved = await widget.store.update(result.profile);
+    await widget.store.saveToken(_profile.id, result.token);
+    if (mounted) {
+      setState(() {
+        _profile = saved;
+        _token = result.token;
+      });
+    }
+    return (name: saved.authorName, email: saved.authorEmail);
   }
 
   Future<void> _save() async {
     final relative = _openFile;
     if (relative == null) return;
+    // Tanpa jaga-jaga ini, membuka panel git pada proyek yang masih kosong
+    // menuliskan berkas utama yang kosong ke disk — lalu git melaporkannya
+    // sebagai berkas baru yang tidak pernah dibuat siapa pun.
+    if (!_dirty) return;
     await File(_project.absolute(relative)).writeAsString(_editor.text);
     if (mounted) setState(() => _dirty = false);
   }
@@ -281,6 +607,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       );
       if (!mounted) return;
       setState(() => _result = result);
+      if (result.ok) await _publishPdf(result);
       // Reopening the PDF resets the view, so the page is restored.
       if (result.ok && _pdfPage > 1) {
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -299,6 +626,26 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     await _rescanProject();
   }
 
+  /// Menyalin PDF hasil kompilasi ke folder proyek.
+  ///
+  /// Kompilasinya menulis ke `.writepapertex/`, yang mengabaikan dirinya
+  /// sendiri di git — jadi tanpa salinan ini PDF-nya tidak pernah ikut
+  /// ter-push, dan yang membuka repositori tanpa TeX tidak menemukan apa pun
+  /// yang bisa dibaca.
+  Future<void> _publishPdf(CompileResult result) async {
+    final source = result.pdfPath;
+    if (source == null || !File(source).existsSync()) return;
+    final target = _project.absolute('${p.basenameWithoutExtension(_project.mainFile)}.pdf');
+    if (p.equals(source, target)) return;
+    try {
+      await File(source).copy(target);
+    } on FileSystemException {
+      // Gagal menyalin bukan alasan untuk membatalkan kompilasi yang berhasil.
+      return;
+    }
+    await _reloadProject();
+  }
+
   @override
   Widget build(BuildContext context) {
     final layout = LayoutSize.of(context);
@@ -307,22 +654,36 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(_project.name, style: Theme.of(context).textTheme.titleSmall),
-            Text(
-              <String>[
-                '${_openFile ?? '—'}${_dirty ? ' •' : ''}',
-                'utama: ${_project.mainFile}',
-                // Waktu kompilasi ditampilkan supaya "lama" bisa diukur, bukan
-                // hanya dirasakan: kompilasi pertama mengunduh paket TeX dan
-                // memang lama, sesudahnya seharusnya beberapa detik saja.
-                if (_result != null) 'kompilasi ${_formatDuration(_result!.duration)}',
-              ].join(' · '),
-              style: Theme.of(context).textTheme.labelSmall,
+        title: InkWell(
+          onTap: _switchProject,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(_project.name, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.expand_more, size: 16),
+                  ],
+                ),
+                Text(
+                  <String>[
+                    '${_openFile ?? '—'}${_dirty ? ' •' : ''}',
+                    'utama: ${_project.mainFile}',
+                    // Waktu kompilasi ditampilkan supaya "lama" bisa diukur, bukan
+                    // hanya dirasakan: kompilasi pertama mengunduh paket TeX dan
+                    // memang lama, sesudahnya seharusnya beberapa detik saja.
+                    if (_result != null) 'kompilasi ${_formatDuration(_result!.duration)}',
+                  ].join(' · '),
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: <Widget>[
           if (_compiling)
@@ -544,7 +905,21 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     ),
   );
 
-  Widget _fileTree() => ListView(
+  Widget _fileTree() => Column(
+    children: <Widget>[
+      // Menambah berkas duduk di kepala daftar berkas, tempat orang mencarinya.
+      ListTile(
+        dense: true,
+        leading: const Icon(Icons.add, size: 18),
+        title: const Text('Tambah berkas', style: TextStyle(fontSize: 12.5)),
+        onTap: _addFile,
+      ),
+      const Divider(height: 1),
+      Expanded(child: _fileList()),
+    ],
+  );
+
+  Widget _fileList() => ListView(
     children: <Widget>[
       for (final relative in _project.files)
         SizedBox(
@@ -560,7 +935,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   : Icons.insert_drive_file_outlined,
               size: 18,
             ),
-            title: Text(relative, style: const TextStyle(fontSize: 12.5)),
+            title: Text(
+              relative,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: relative == _project.mainFile ? FontWeight.w700 : null,
+              ),
+            ),
+            // Tekan lama untuk memilih berkas utama: tebakannya benar hampir
+            // selalu, dan saat salah orang butuh jalan yang tidak berbelit.
+            onLongPress: p.extension(relative) == '.tex' && relative != _project.mainFile
+                ? () => _setMainFile(relative)
+                : null,
             onTap: () => _openRelative(relative),
           ),
         ),

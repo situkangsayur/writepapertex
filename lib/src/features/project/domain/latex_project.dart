@@ -53,22 +53,81 @@ class LatexProject {
   ///
   /// Guessing by name would pick `main.tex` even in a project whose entry
   /// point is `skripsi.tex`, and a chapter file included by another is not a
-  /// document on its own.
+  /// document on its own. But `\documentclass` alone is not enough either:
+  /// a real thesis keeps each figure as its own `standalone` document, and
+  /// those sort before the thesis itself. So the candidates are scored.
   static Future<String> _guessMainFile(String directory, List<String> files) async {
     final texFiles = files.where((f) => p.extension(f) == '.tex').toList();
     if (texFiles.isEmpty) return 'main.tex';
 
+    ({String file, int score})? best;
     for (final candidate in texFiles) {
+      final String text;
       try {
-        final text = await File(p.join(directory, candidate)).readAsString();
-        if (text.contains(RegExp(r'\\documentclass'))) return candidate;
+        text = await File(p.join(directory, candidate)).readAsString();
       } on FileSystemException {
         continue;
       }
+      final score = mainFileScore(candidate, text);
+      if (score <= 0) continue;
+      if (best == null || score > best.score) best = (file: candidate, score: score);
     }
+    if (best != null) return best.file;
+
     // Nothing declared a class; the shallowest file is the best remaining bet.
     texFiles.sort((a, b) => p.split(a).length.compareTo(p.split(b).length));
     return texFiles.first;
+  }
+
+  /// Seberapa mungkin sebuah berkas adalah berkas utama proyek. 0 berarti
+  /// bukan dokumen sama sekali.
+  ///
+  /// Dipisahkan supaya bisa diuji tanpa menyiapkan folder di disk.
+  static int mainFileScore(String relative, String text) {
+    if (!text.contains(RegExp(r'\\documentclass'))) return 0;
+    var score = 100;
+
+    // Gambar dan potongan yang berdiri sendiri memakai kelas `standalone`.
+    // Sebuah tesis bisa punya belasan di antaranya, dan semuanya bukan
+    // dokumen utama.
+    if (text.contains(RegExp(r'\\documentclass(\[[^\]]*\])?\{standalone\}'))) score -= 80;
+
+    // Berkas utama hampir selalu ada di akar proyek.
+    score -= (p.split(relative).length - 1) * 12;
+
+    // Yang memanggil berkas lain adalah induknya, bukan yang dipanggil.
+    score += RegExp(r'\\(input|include|subfile)\{').allMatches(text).length.clamp(0, 10) * 4;
+
+    // Penanda dokumen panjang: daftar isi, judul, daftar pustaka.
+    for (final marker in <String>[
+      r'\tableofcontents',
+      r'\maketitle',
+      r'\bibliography',
+      r'\printbibliography',
+      r'\frontmatter',
+    ]) {
+      if (text.contains(marker)) score += 6;
+    }
+
+    // Nama yang lazim dipakai orang untuk berkas utama.
+    final stem = p.basenameWithoutExtension(relative).toLowerCase();
+    if (<String>{
+      'main',
+      'utama',
+      'proposal',
+      'skripsi',
+      'tesis',
+      'disertasi',
+      'paper',
+      'artikel',
+      'laporan',
+      'thesis',
+      'root',
+    }.contains(stem)) {
+      score += 15;
+    }
+
+    return score;
   }
 
   LatexProject copyWith({String? mainFile, List<String>? files}) => LatexProject(
@@ -101,6 +160,13 @@ class ProjectTemplate {
       throw StateError('Folder ini sudah berisi main.tex');
     }
     await main.writeAsString(source);
+
+    // Proyek baru hampir selalu berakhir di git, dan tanpa ini commit
+    // pertamanya ikut membawa belasan berkas keluaran yang tidak ada gunanya
+    // bagi siapa pun.
+    final ignore = File(p.join(directory, '.gitignore'));
+    if (!ignore.existsSync()) await ignore.writeAsString(latexGitignore);
+
     return LatexProject.open(directory);
   }
 

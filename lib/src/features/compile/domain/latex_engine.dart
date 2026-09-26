@@ -160,6 +160,49 @@ class LineSplitter {
 String buildDirFor(String projectDir) => p.join(projectDir, '.writepapertex', 'build');
 
 /// True when [path] is a file LaTeX generated rather than one someone wrote.
+/// Isi `.gitignore` yang pantas untuk sebuah proyek LaTeX.
+///
+/// PDF-nya sengaja **tidak** diabaikan, walau hampir semua templat
+/// `.gitignore` LaTeX mengabaikannya. Sebuah paper dibaca oleh pembimbing dan
+/// rekan penulis yang tidak memasang TeX, dan yang mereka buka adalah PDF di
+/// dalam repositori itu. Yang diabaikan hanyalah berkas yang selalu bisa
+/// dibuat ulang dari sumbernya.
+const String latexGitignore = '''
+# Keluaran LaTeX yang selalu bisa dibuat ulang dari sumbernya.
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.glo
+*.gls
+*.idx
+*.ilg
+*.ind
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
+*.xdv
+
+# Folder kerja WritePaperTeX.
+.writepapertex/
+
+# Berkas sementara sistem.
+.DS_Store
+Thumbs.db
+
+# PDF sengaja tidak diabaikan: hasil akhirnya ikut ke repositori supaya bisa
+# dibaca tanpa memasang TeX.
+''';
+
 bool isGeneratedFile(String path) {
   const extensions = <String>{
     '.aux',
