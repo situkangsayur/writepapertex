@@ -5,6 +5,7 @@
 //! kenapa". Codegen sebesar itu untuk satu fungsi hanya menambah bagian yang
 //! bisa rusak.
 
+mod compile;
 mod git;
 
 use std::ffi::{CStr, CString};
@@ -47,6 +48,7 @@ pub unsafe extern "C" fn wptex_compile(
     tex_path: *const c_char,
     out_path: *const c_char,
     cache_dir: *const c_char,
+    progress_path: *const c_char,
     err_buf: *mut c_char,
     err_len: usize,
 ) -> c_int {
@@ -64,26 +66,24 @@ pub unsafe extern "C" fn wptex_compile(
         std::env::set_var("TECTONIC_CACHE_DIR", cache);
     }
 
-    let source = match std::fs::read_to_string(tex) {
-        Ok(s) => s,
-        Err(e) => {
-            write_err(&format!("tidak bisa membaca {tex}: {e}"), err_buf, err_len);
-            return 3;
-        }
-    };
-
     // Dijalankan dengan direktori kerja di sebelah berkasnya, supaya
     // \input dan \includegraphics yang relatif tetap ketemu.
     if let Some(dir) = Path::new(tex).parent() {
         let _ = std::env::set_current_dir(dir);
     }
 
+    let out_dir = Path::new(out)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    let progress = to_str(progress_path).unwrap_or("");
+
     // Tectonic bisa panic — berkas bundel rusak, jaringan mati di tengah,
     // atau asersi di dalam mesin XeTeX. Tanpa penangkap ini, panic itu
     // mematikan seluruh aplikasi; di perangkat hasilnya SIGABRT dan layar
     // kembali ke peluncur tanpa penjelasan apa pun.
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tectonic::latex_to_pdf(&source)
+        compile::run(tex, &out_dir, progress)
     }));
 
     let result = match outcome {
@@ -100,13 +100,27 @@ pub unsafe extern "C" fn wptex_compile(
     };
 
     match result {
-        Ok(pdf) => match std::fs::write(out, &pdf) {
-            Ok(()) => 0,
-            Err(e) => {
-                write_err(&format!("tidak bisa menulis {out}: {e}"), err_buf, err_len);
+        Ok(pdf) => {
+            // Tectonic menulis PDF-nya dengan nama berkas sumbernya. Kalau
+            // yang diminta nama lain, berkasnya dipindahkan — bukan
+            // dikompilasi ulang.
+            if pdf.to_string_lossy() != out {
+                if let Err(e) = std::fs::rename(&pdf, out) {
+                    write_err(
+                        &format!("PDF ada di {} tapi tidak bisa dipindah: {e}", pdf.display()),
+                        err_buf,
+                        err_len,
+                    );
+                    return 4;
+                }
+            }
+            if Path::new(out).exists() {
+                0
+            } else {
+                write_err("mesin selesai tanpa keluhan, tetapi PDF-nya tidak ada", err_buf, err_len);
                 4
             }
-        },
+        }
         Err(e) => {
             // Rantai sebabnya ikut ditulis: pesan teratas Tectonic sering
             // hanya "engine failed", dan yang menjelaskan ada di bawahnya.

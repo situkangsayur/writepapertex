@@ -21,6 +21,9 @@ tectonic = { path = "..", default-features = false, features = [
   "serialization",
 ] }
 
+# Tipe galat milik Tectonic, dipakai tanda tangan StatusBackend.
+tectonic_errors = { path = "../crates/errors" }
+
 # libgit2 untuk Android. Protokol git-nya tidak ditulis ulang: yang sudah ada
 # dan teruji dipakai, dan pustakanya di-vendor supaya tidak bergantung pada
 # apa pun yang terpasang di perangkat.

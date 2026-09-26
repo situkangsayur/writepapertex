@@ -117,17 +117,44 @@ pub fn set_ca_bundle(path: &str) -> Result<(), git2::Error> {
 
 fn callbacks<'a>(token: Option<&'a str>, user: Option<&'a str>) -> RemoteCallbacks<'a> {
     let mut cb = RemoteCallbacks::new();
-    cb.credentials(move |_url, from_url, _allowed| match token {
-        // Nama pengguna yang dipilih pemakai menang: GitHub menerima apa pun
-        // bersama token, tetapi Gitea dan GitLab memeriksanya, jadi menebak
-        // sendiri berarti gagal di dua dari tiga tempat.
-        Some(t) if !t.is_empty() => Cred::userpass_plaintext(
-            user.filter(|u| !u.is_empty())
-                .or(from_url)
-                .unwrap_or("x-access-token"),
-            t,
-        ),
-        _ => Cred::default(),
+
+    // Berapa kali server sudah meminta kredensial.
+    //
+    // libgit2 akan memanggil balik ini berulang-ulang selama kredensialnya
+    // ditolak, lalu menyerah dengan "too many redirects or authentication
+    // replays" — kalimat yang tidak menyebut kata sandi sama sekali dan
+    // membuat orang mengira alamatnya yang salah. Menyerah pada percobaan
+    // kedua membuat sebabnya terucap apa adanya.
+    let attempts = std::cell::Cell::new(0u32);
+
+    cb.credentials(move |_url, from_url, allowed| {
+        if !allowed.is_user_pass_plaintext() {
+            return Err(git2::Error::from_str(
+                "Alamat ini meminta cara masuk yang tidak didukung. Pakai alamat HTTPS (https://…) dengan token, bukan SSH (git@…).",
+            ));
+        }
+
+        attempts.set(attempts.get() + 1);
+        if attempts.get() > 1 {
+            return Err(git2::Error::from_str(
+                "Nama pengguna atau token ditolak server. Periksa tokennya masih berlaku dan punya izin untuk repositori ini.",
+            ));
+        }
+
+        match token {
+            // Nama pengguna yang dipilih pemakai menang: GitHub menerima apa
+            // pun bersama token, tetapi Gitea dan GitLab memeriksanya, jadi
+            // menebak sendiri berarti gagal di dua dari tiga tempat.
+            Some(t) if !t.is_empty() => Cred::userpass_plaintext(
+                user.filter(|u| !u.is_empty())
+                    .or(from_url)
+                    .unwrap_or("x-access-token"),
+                t,
+            ),
+            _ => Err(git2::Error::from_str(
+                "Repositori ini tertutup dan meminta kredensial. Isi nama pengguna dan token akses.",
+            )),
+        }
     });
     cb
 }

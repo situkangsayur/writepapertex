@@ -95,6 +95,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   /// Apa yang sedang dikerjakan mesin, ditampilkan selama kompilasi.
   String _progress = '';
+
+  /// Kapan kompilasi yang sedang berjalan dimulai, untuk menghitung waktunya.
+  DateTime? _compileStarted;
+  Timer? _ticker;
+
+  /// Bertambah setiap kali kompilasi dibatalkan, supaya hasil dari kompilasi
+  /// yang sudah ditinggalkan tidak mendarat di layar.
+  int _compileRun = 0;
   LatexAutocomplete _autocomplete = const LatexAutocomplete();
   late final CwlRepository _cwl = CwlRepository(projectDir: _project.directory);
 
@@ -366,6 +374,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _autoTimer?.cancel();
     _editor.removeListener(_onEdited);
     _editor.dispose();
@@ -589,12 +598,37 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     if (mounted) setState(() => _dirty = false);
   }
 
+  /// Melepaskan kompilasi yang sedang berjalan dari layar.
+  ///
+  /// Mesinnya sendiri tidak bisa dihentikan di tengah jalan — ia kode asli
+  /// yang sedang berjalan di isolate-nya sendiri — tetapi menunggu tanpa
+  /// batas juga bukan pilihan yang pantas ditawarkan. Jadi hasilnya
+  /// diabaikan dan ruang kerjanya bisa dipakai lagi.
+  void _abandonCompile() {
+    _compileRun++;
+    _ticker?.cancel();
+    setState(() {
+      _compiling = false;
+      _progress = '';
+      _compileStarted = null;
+    });
+    _say('Kompilasi ditinggalkan. Mesinnya masih menyelesaikan di latar.');
+  }
+
   Future<void> _compile() async {
     if (_compiling) return;
     await _save();
+    final run = ++_compileRun;
     setState(() {
       _compiling = true;
       _progress = 'Menyiapkan…';
+      _compileStarted = DateTime.now();
+    });
+    _ticker?.cancel();
+    // Angka detik yang bergerak adalah tanda paling sederhana bahwa sesuatu
+    // masih berjalan; spinner yang diam tidak membedakan apa pun.
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _compiling) setState(() {});
     });
     try {
       final result = await _engine.compile(
@@ -602,10 +636,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         mainFile: _project.mainFile,
         onOutput: (line) {
           final text = line.trim();
-          if (text.isNotEmpty && mounted) setState(() => _progress = text);
+          if (text.isNotEmpty && mounted && run == _compileRun) {
+            setState(() => _progress = text);
+          }
         },
       );
-      if (!mounted) return;
+      if (!mounted || run != _compileRun) return;
       setState(() => _result = result);
       if (result.ok) await _publishPdf(result);
       // Reopening the PDF resets the view, so the page is restored.
@@ -616,13 +652,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         }
       }
     } finally {
-      if (mounted) {
+      _ticker?.cancel();
+      if (mounted && run == _compileRun) {
         setState(() {
           _compiling = false;
           _progress = '';
+          _compileStarted = null;
         });
       }
     }
+    if (run != _compileRun) return;
     await _rescanProject();
   }
 
@@ -824,13 +863,41 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           Expanded(
             child: Text(
               _progress,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(color: scheme.onSecondaryContainer, fontSize: 12.5),
             ),
+          ),
+          if (_compileStarted != null) ...<Widget>[
+            const SizedBox(width: 10),
+            Text(
+              _elapsed(_compileStarted!),
+              style: TextStyle(
+                color: scheme.onSecondaryContainer,
+                fontSize: 12.5,
+                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: _abandonCompile,
+            style: TextButton.styleFrom(
+              foregroundColor: scheme.onSecondaryContainer,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('Batal'),
           ),
         ],
       ),
     ),
   );
+
+  /// Sudah berapa lama, dalam bentuk m:dd.
+  static String _elapsed(DateTime since) {
+    final seconds = DateTime.now().difference(since).inSeconds;
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
 
   Widget _noEngineBar(ColorScheme scheme) => Material(
     color: scheme.tertiaryContainer,

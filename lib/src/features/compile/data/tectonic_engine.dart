@@ -13,16 +13,19 @@ import '../domain/latex_engine.dart';
 
 /// Tanda tangan C dari `wptex_compile`.
 typedef _CompileNative =
-    Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Size);
+    Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Size);
 typedef _CompileDart =
-    int Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int);
+    int Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int);
 
 /// Argumen untuk isolate, karena kompilasi memblokir dan bisa berjalan lama.
 class _Job {
-  const _Job(this.tex, this.out, this.cache);
+  const _Job(this.tex, this.out, this.cache, this.progress);
   final String tex;
   final String out;
   final String cache;
+
+  /// Berkas tempat mesinnya menuliskan langkah demi langkah.
+  final String progress;
 }
 
 /// Mesin TeX yang ikut di dalam aplikasi.
@@ -56,12 +59,15 @@ class TectonicEngine implements LatexEngine {
     }
   }
 
-  /// Berapa lama satu kompilasi boleh berjalan sebelum dihentikan.
+  /// Berapa lama boleh **tidak ada kemajuan** sebelum kompilasi dihentikan.
   ///
-  /// Tanpa batas ini, jaringan yang mati di tengah unduhan bundel membuat
-  /// kompilasi menggantung selamanya dengan spinner yang tidak pernah
-  /// berhenti, dan tidak ada cara membatalkannya.
-  static const Duration timeout = Duration(minutes: 5);
+  /// Bukan batas waktu total. Kompilasi pertama sebuah disertasi memang bisa
+  /// makan sepuluh menit — mengunduh berpuluh paket dan font, menjalankan
+  /// bibtex, lalu mengulang TeX sampai rujukannya mantap — dan memotongnya di
+  /// menit kelima berarti pekerjaan yang benar dibunuh tepat sebelum selesai.
+  /// Yang pantas dicurigai adalah diamnya: mesin yang tidak melaporkan apa
+  /// pun selama tiga menit memang sedang tersangkut.
+  static const Duration idleTimeout = Duration(minutes: 3);
 
   @override
   Future<CompileResult> compile({
@@ -89,13 +95,51 @@ class TectonicEngine implements LatexEngine {
 
     onOutput?.call('Menjalankan Tectonic…\n');
 
-    final (:code, :message) = await _runWithLimit(
-      _Job(p.join(projectDir, mainFile), outPath, cache),
-      timeout,
-    );
+    // Mesinnya menulis kemajuannya ke berkas ini; dibaca sambil menunggu.
+    // Tanpa itu satu-satunya yang terlihat selama beberapa menit adalah
+    // kalimat "Menjalankan Tectonic", yang tidak bisa dibedakan dari
+    // aplikasi yang menggantung.
+    final progressPath = p.join(buildDir, 'kemajuan.log');
+    final progressFile = File(progressPath);
+    if (progressFile.existsSync()) await progressFile.delete();
+
+    var shown = 0;
+    var lastActivity = DateTime.now();
+    final watcher = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      if (onOutput == null || !progressFile.existsSync()) return;
+      try {
+        final lines = progressFile.readAsLinesSync();
+        for (var i = shown; i < lines.length; i++) {
+          if (lines[i].trim().isNotEmpty) onOutput(lines[i]);
+        }
+        if (lines.length != shown) lastActivity = DateTime.now();
+        shown = lines.length;
+      } on FileSystemException {
+        // Berkasnya sedang ditulis mesin; percobaan berikutnya 400 md lagi.
+      }
+    });
+
+    final ({int code, String message}) outcome;
+    try {
+      outcome = await _runWithLimit(
+        _Job(p.join(projectDir, mainFile), outPath, cache, progressPath),
+        idleTimeout,
+        () => lastActivity,
+      );
+    } finally {
+      watcher.cancel();
+    }
+    final (:code, :message) = outcome;
 
     final ok = code == 0 && File(outPath).existsSync();
-    final log = ok ? 'Selesai.' : message;
+
+    // Log LaTeX yang sebenarnya — dengan nomor baris dan nama berkasnya —
+    // hanya ada kalau mesinnya sempat menulisnya. Itu yang paling berguna
+    // saat gagal; pesan Tectonic sendiri sering hanya "the LaTeX engine
+    // failed".
+    final texLog = File(p.join(buildDir, '${p.basenameWithoutExtension(mainFile)}.log'));
+    final logText = texLog.existsSync() ? await texLog.readAsString() : '';
+    final log = ok ? 'Selesai.' : <String>[message, logText].where((t) => t.isNotEmpty).join('\n');
     onOutput?.call('$log\n');
 
     // Pesan Tectonic tidak berbentuk log LaTeX, jadi pengurai biasa sering
@@ -154,7 +198,11 @@ class TectonicEngine implements LatexEngine {
   /// Isolate-nya dimatikan sungguhan, bukan hanya future-nya yang diabaikan:
   /// pekerjaan yang ditinggalkan terus berjalan, memegang berkas dan memakan
   /// baterai tanpa ada yang menunggunya.
-  static Future<({int code, String message})> _runWithLimit(_Job job, Duration limit) async {
+  static Future<({int code, String message})> _runWithLimit(
+    _Job job,
+    Duration idleLimit,
+    DateTime Function() lastActivity,
+  ) async {
     final port = ReceivePort();
     final errors = ReceivePort();
     final completer = Completer<({int code, String message})>();
@@ -177,17 +225,28 @@ class TectonicEngine implements LatexEngine {
       }
     });
 
-    try {
-      return await completer.future.timeout(limit);
-    } on TimeoutException {
-      return (
+    // Pengawas yang menghitung diam, bukan lamanya. Selama mesinnya masih
+    // melaporkan sesuatu, ia dibiarkan bekerja.
+    final watchdog = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (completer.isCompleted) {
+        timer.cancel();
+        return;
+      }
+      if (DateTime.now().difference(lastActivity()) < idleLimit) return;
+      timer.cancel();
+      completer.complete((
         code: 7,
         message:
-            'Kompilasi dihentikan setelah ${limit.inMinutes} menit. Kalau ini '
-            'kompilasi pertama, paket TeX sedang diunduh dan jaringannya '
-            'mungkin terlalu lambat — coba lagi dengan sambungan yang lebih baik.',
-      );
+            'Mesin berhenti melapor selama ${idleLimit.inMinutes} menit, jadi '
+            'kompilasinya dihentikan. Kalau ini kompilasi pertama, paket TeX '
+            'sedang diunduh dan jaringannya mungkin putus.',
+      ));
+    });
+
+    try {
+      return await completer.future;
     } finally {
+      watchdog.cancel();
       isolate.kill(priority: Isolate.immediate);
       port.close();
       errors.close();
@@ -209,9 +268,10 @@ class TectonicEngine implements LatexEngine {
     final tex = job.tex.toNativeUtf8();
     final out = job.out.toNativeUtf8();
     final cache = job.cache.toNativeUtf8();
+    final progress = job.progress.toNativeUtf8();
     final err = calloc<Uint8>(errLen).cast<Utf8>();
     try {
-      final code = compile(tex, out, cache, err, errLen);
+      final code = compile(tex, out, cache, progress, err, errLen);
       final message = code == 0 ? '' : err.toDartString();
       return (code: code, message: message.isEmpty ? 'Kompilasi gagal (kode $code)' : message);
     } finally {
@@ -219,6 +279,7 @@ class TectonicEngine implements LatexEngine {
         ..free(tex)
         ..free(out)
         ..free(cache)
+        ..free(progress)
         ..free(err);
     }
   }
