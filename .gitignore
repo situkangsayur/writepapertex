@@ -11,3 +11,7 @@ android/local.properties
 android/key.properties
 linux/flutter/ephemeral/
 .writepapertex/
+
+# Pustaka mesin Tectonic: 47 MB, dibangun oleh
+# scripts/build-tectonic-android.sh, bukan disimpan di riwayat.
+android/app/src/main/jniLibs/

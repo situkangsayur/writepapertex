@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../../core/utils/layout_size.dart';
 import '../../compile/data/latexmk_engine.dart';
+import '../../compile/data/tectonic_engine.dart';
 import '../../compile/domain/latex_engine.dart';
 import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
@@ -30,7 +32,12 @@ class WorkspaceScreen extends StatefulWidget {
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final TextEditingController _editor = TextEditingController();
   final PdfViewerController _pdf = PdfViewerController();
-  final LatexmkEngine _engine = const LatexmkEngine();
+
+  /// Tectonic di Android karena tidak ada TeX Live di sana; latexmk di
+  /// desktop karena membundel salinan kedua TeX Live akan sia-sia.
+  final LatexEngine _engine = Platform.isAndroid || Platform.isIOS
+      ? const TectonicEngine()
+      : const LatexmkEngine();
   final GitBackend _git = const GitCliBackend();
 
   late final LatexProject _project = widget.project;
@@ -38,6 +45,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// True while a file is being put into the editor, so filling it does not
   /// count as the user typing.
   bool _loadingFile = false;
+
+  /// Recompile by itself once typing pauses.
+  bool _autoCompile = false;
+  Timer? _autoTimer;
 
   /// Null until checked; false means there is no engine on this platform.
   bool? _engineReady;
@@ -68,8 +79,21 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// Without this the save button stayed disabled forever and the modified
   /// dot never appeared, so the only way to save was to compile.
   void _onEdited() {
-    if (_loadingFile || _dirty) return;
-    setState(() => _dirty = true);
+    if (_loadingFile) return;
+    if (!_dirty) setState(() => _dirty = true);
+    if (_autoCompile) _scheduleAutoCompile();
+  }
+
+  /// Mengompilasi ulang setelah mengetik berhenti sejenak.
+  ///
+  /// Bukan pada setiap ketikan: satu kompilasi makan beberapa detik, dan
+  /// menjalankannya per huruf berarti antrean yang tidak pernah habis. Dua
+  /// detik cukup untuk menandai "sudah selesai mengetik" tanpa terasa lambat.
+  void _scheduleAutoCompile() {
+    _autoTimer?.cancel();
+    _autoTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && !_compiling) _compile();
+    });
   }
 
   /// Android has no TeX Live and Tectonic is not bundled yet, so compilation
@@ -82,6 +106,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   @override
   void dispose() {
+    _autoTimer?.cancel();
     _editor.removeListener(_onEdited);
     _editor.dispose();
     super.dispose();
@@ -243,6 +268,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             icon: const Icon(Icons.table_chart_outlined),
             onPressed: _insertTable,
           ),
+          IconButton(
+            tooltip: _autoCompile
+                ? 'Kompilasi otomatis: hidup'
+                : 'Kompilasi otomatis saat mengetik berhenti',
+            isSelected: _autoCompile,
+            selectedIcon: const Icon(Icons.autorenew),
+            icon: const Icon(Icons.autorenew_outlined),
+            onPressed: () {
+              setState(() => _autoCompile = !_autoCompile);
+              if (_autoCompile) _scheduleAutoCompile();
+            },
+          ),
           IconButton(tooltip: 'Git', icon: const Icon(Icons.commit_outlined), onPressed: _openGit),
           FilledButton.tonalIcon(
             onPressed: (_compiling || _engineReady == false) ? null : _compile,
@@ -296,10 +333,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              Platform.isAndroid
-                  ? 'Belum bisa mengompilasi di Android: mesin Tectonic belum '
-                        'dibundel. Menulis, menyimpan, dan membuka proyek tetap jalan.'
-                  : _engine.unavailableReason,
+              _engine.unavailableReason,
               style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12.5),
             ),
           ),
@@ -339,7 +373,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Widget _errorBar(List<LatexMessage> errors, ColorScheme scheme) => Material(
     color: scheme.errorContainer,
     child: SizedBox(
-      height: 64,
+      // Pesan Tectonic bisa beberapa baris; 64 piksel hanya memperlihatkan
+      // barisnya yang pertama dan menyembunyikan sebabnya.
+      height: 110,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         itemCount: errors.length,

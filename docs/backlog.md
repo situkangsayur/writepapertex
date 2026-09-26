@@ -44,14 +44,25 @@ sungguhan hari ini alih-alih ditebak.
       catatan sebelumnya ternyata jauh terlalu pesimistis.
 - [x] Ketujuh pustaka C terbangun: zlib, libpng, freetype2, graphite2, icu-uc,
       icu-i18n, harfbuzz, fontconfig
-- [ ] **Bungkus jadi `cdylib` dan panggil dari Dart** lewat
-      `flutter_rust_bridge` — terkompilasi belum berarti bisa dipakai
-- [ ] Font: `XeTeXFontMgr_FC` mencari font lewat fontconfig dan Android tidak
-      punya berkas konfigurasinya; perlu diarahkan ke `/system/fonts`
-- [ ] Bundel paket TeX: Tectonic mengunduh sesuai kebutuhan, yang di tablet
-      berarti unduhan pertama yang besar dan perlu jaringan
-- [ ] Ukuran APK setelah mesinnya masuk
-- [ ] Jalankan kompilasi sungguhan di perangkat
+- [x] **Dibungkus jadi `cdylib` dan dipanggil dari Dart** lewat `dart:ffi`
+      langsung, bukan `flutter_rust_bridge`: yang dibutuhkan hanya satu fungsi,
+      dan codegen sebesar itu untuk satu fungsi hanya menambah bagian yang bisa
+      rusak. Dijalankan di isolate karena satu kompilasi makan puluhan detik.
+- [x] **Kompilasi sungguhan berjalan di tablet** — PDF terender di panel
+      pratinjau, lengkap dengan babel Indonesia.
+- [x] **Kompilasi otomatis**: pratinjau diperbarui dua detik setelah mengetik
+      berhenti. Bukan per ketikan — satu kompilasi makan beberapa detik dan
+      itu akan jadi antrean yang tidak pernah habis.
+- [x] Ukuran APK: **76 MB**. Pustaka mesinnya 47 MB, dan 36 MB di antaranya
+      data ICU.
+- [ ] Perkecil APK: data ICU bisa disaring, tapi harus dipastikan dulu apa
+      yang dipakai XeTeX
+- [ ] Bundel paket TeX: kompilasi pertama mengunduh dan perlu jaringan
+      (~2 menit); sesudahnya luring. Perlu diputuskan apakah sebagian
+      dibundel
+- [x] Font: ternyata tidak jadi masalah — `XeTeXFontMgr_FC` berjalan tanpa
+      berkas konfigurasi fontconfig untuk dokumen yang memakai font TeX
+      bawaan. Akan jadi masalah kalau dokumennya meminta font sistem.
 - [ ] Cadangan yang bisa dipakai hari ini: kompilasi di komputer, PDF-nya
       di-commit, tablet tinggal menarik — tanpa infrastruktur baru
 - [ ] Cadangan kedua: layanan kompilasi di komputer sendiri, dipanggil tablet

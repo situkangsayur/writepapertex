@@ -61,6 +61,47 @@ sed -i 's/"-std=c++14"/"-std=c++17"/' crates/engine_xetex/build.rs crates/xetex_
 # (b) Crate `time` yang terkunci tidak lagi terkompilasi dengan rustc baru.
 cargo update -p time >/dev/null
 
+# (c) app_dirs2 menanyakan folder data aplikasi kepada konteks Java, dan tanpa
+#     konteks itu ia panik dengan "android context was not initialized" yang
+#     mematikan seluruh proses. Aplikasi pemanggil sudah tahu foldernya
+#     sendiri, jadi dibuat bisa memberitahukannya lewat TECTONIC_APP_DIR.
+python3 - <<'PATCH'
+import pathlib
+p = pathlib.Path('crates/io_base/src/app_dirs.rs')
+s = p.read_text()
+if 'forced_root' in s:
+    raise SystemExit(0)
+helper = '''
+/// Akar yang dipaksakan lewat `TECTONIC_APP_DIR`, kalau disetel.
+///
+/// Ditambahkan untuk Android: di sana `app_dirs2` menanyakan folder data
+/// aplikasi kepada konteks Java, dan tanpa konteks itu ia panik.
+fn forced_root(sub: &str) -> Option<PathBuf> {
+    let base = std::env::var_os("TECTONIC_APP_DIR")?;
+    let mut path = PathBuf::from(base);
+    if !sub.is_empty() {
+        for part in sub.split('/') {
+            if !part.is_empty() {
+                path.push(part);
+            }
+        }
+    }
+    let _ = std::fs::create_dir_all(&path);
+    Some(path)
+}
+'''
+s = s.replace('pub fn get_user_config() -> Result<PathBuf> {\n    Ok(',
+              helper + '\npub fn get_user_config() -> Result<PathBuf> {\n'
+              '    if let Some(p) = forced_root("config") {\n        return Ok(p);\n    }\n    Ok(')
+s = s.replace('pub fn ensure_user_config() -> Result<PathBuf> {\n    Ok(',
+              'pub fn ensure_user_config() -> Result<PathBuf> {\n'
+              '    if let Some(p) = forced_root("config") {\n        return Ok(p);\n    }\n    Ok(')
+s = s.replace('pub fn ensure_user_cache_dir(path: &str) -> Result<PathBuf> {\n    Ok(',
+              'pub fn ensure_user_cache_dir(path: &str) -> Result<PathBuf> {\n'
+              '    if let Some(p) = forced_root(path) {\n        return Ok(p);\n    }\n    Ok(')
+p.write_text(s)
+PATCH
+
 # --- 4. Bangun ------------------------------------------------------------
 #
 # external-harfbuzz: pakai harfbuzz dari vcpkg, bukan submodule yang tidak
@@ -81,3 +122,27 @@ echo
 echo "Selesai."
 ls -la "$out/libtectonic.rlib"
 echo "Objek C/C++ AArch64: $(find "$out/build" -name '*.o' | wc -l)"
+
+# --- 5. Bungkus jadi pustaka yang bisa dipanggil Dart ----------------------
+#
+# Crate jembatan disalin ke dalam pohon Tectonic supaya dependensi path-nya
+# selalu menunjuk ke pohon yang sudah ditambal.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+rm -rf "$WORK/tectonic-src/wptex_engine"
+cp -r "$here/rust" "$WORK/tectonic-src/wptex_engine"
+cd "$WORK/tectonic-src/wptex_engine"
+cargo ndk -t arm64-v8a build --release
+
+lib="$WORK/tectonic-src/wptex_engine/target/aarch64-linux-android/release/libwptex_engine.so"
+dest="$here/android/app/src/main/jniLibs/arm64-v8a"
+mkdir -p "$dest"
+"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all -o "$dest/libwptex_engine.so" "$lib"
+
+# Runtime C++ milik NDK ikut disertakan: pustaka Rust ini menautnya secara
+# dinamis, dan tanpa berkas ini dlopen gagal dengan "library not found" yang
+# tidak menyebut nama yang kurang.
+cp "$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$dest/"
+
+echo
+echo "Pustaka mesin terpasang:"
+ls -la "$dest/"
