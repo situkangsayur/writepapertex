@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Latar ikon adaptif. Biru tua: nada teknik, sekaligus membuat bintang
-     dan daun di depannya terbaca pada ukuran kecil. -->
+<!-- Biru ITB, diambil dari warna yang dipakai itb.ac.id sendiri:
+     #005aab untuk yang terang, #003d7a untuk yang tua. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#16324F"/>
-      <stop offset="1" stop-color="#0B1F33"/>
+      <stop offset="0" stop-color="#005aab"/>
+      <stop offset="1" stop-color="#003d7a"/>
     </linearGradient>
   </defs>
   <rect width="108" height="108" fill="url(#bg)"/>

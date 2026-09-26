@@ -1,26 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Lambang orisinal, bukan salinan logo lembaga mana pun.
-     - Bintang delapan (dua bujur sangkar bersilang) adalah motif geometri
-       Islam yang sudah umum berabad-abad, bukan lambang keagamaan.
-     - Daun hijau: pertumbuhan — ESG, sekaligus arti "tazkia" sebagai
-       penyucian dan penumbuhan.
-     - Ujung pena: ini tetap penyunting naskah.
-     Semuanya di dalam kotak aman 66dp di tengah kanvas 108dp, karena
-     peluncur Android boleh memotong ikon adaptif jadi lingkaran. -->
+<!-- Lambang orisinal. Yang diambil dari kedua kampus adalah warnanya, bukan
+     logonya: biru ITB (#005aab/#003d7a) sebagai latar, oranye Tazkia
+     (#ee7b1d) untuk garisnya, dan hijau (#0f9d58) yang dipakai keduanya
+     sekaligus menjadi warna ESG.
+
+     Garisnya dibuat berjalin seperti strapwork pada geometri Islam: sisi
+     mendatar lewat di atas, sisi tegak lewat di bawah. Itu yang membedakan
+     pola Islam dari sekadar dua bujur sangkar bertumpuk. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
   <g transform="translate(54 54)">
-    <!-- Bintang delapan: dua bujur sangkar, satu diputar 45 derajat. -->
-    <g fill="none" stroke="#E8C77A" stroke-width="3.0" stroke-linejoin="round">
-      <rect x="-21" y="-21" width="42" height="42" rx="2.5"/>
-      <rect x="-21" y="-21" width="42" height="42" rx="2.5" transform="rotate(45)"/>
+    <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <!-- Bujur sangkar tegak, digambar lebih dulu supaya sisi tegaknya
+           tertimpa oleh bujur sangkar miring. -->
+      <rect x="-21" y="-21" width="42" height="42" rx="2" stroke="#ee7b1d" stroke-width="3"/>
+      <!-- Bujur sangkar miring 45 derajat: inilah yang membentuk bintang. -->
+      <rect x="-21" y="-21" width="42" height="42" rx="2" transform="rotate(45)"
+            stroke="#f28f2f" stroke-width="3"/>
+      <!-- Sisi mendatar digambar ulang di atas, sehingga garisnya berjalin
+           bukan sekadar bersilang. -->
+      <path d="M -21 -21 H 21 M -21 21 H 21" stroke="#ee7b1d" stroke-width="3"/>
+      <!-- Oktagon tipis di dalam: lapisan garis kedua, ciri khas pola Islam. -->
+      <path d="M -11 -26.6 L 11 -26.6 L 26.6 -11 L 26.6 11 L 11 26.6
+               L -11 26.6 L -26.6 11 L -26.6 -11 Z"
+            stroke="#ee7b1d" stroke-width="1.1" opacity="0.55"/>
     </g>
 
-    <!-- Daun yang tumbuh dari tangkai, menjorok ke kanan atas. -->
-    <path d="M -1 14 C -1 3, 4 -5, 12.5 -9 C 12.5 -1, 8.5 6, -1 14 Z" fill="#3FA96B"/>
-    <path d="M -1 14 C -1 5, -4.5 -1, -10.5 -4 C -10.5 3, -6.5 9, -1 14 Z" fill="#2E8455"/>
+    <!-- Daun: pertumbuhan pada ESG, sekaligus arti "tazkia". -->
+    <path d="M -1 14 C -1 3, 4 -5, 12.5 -9 C 12.5 -1, 8.5 6, -1 14 Z" fill="#2ec664"/>
+    <path d="M -1 14 C -1 5, -4.5 -1, -10.5 -4 C -10.5 3, -6.5 9, -1 14 Z" fill="#0f9d58"/>
 
-    <!-- Ujung pena: tangkai daun diteruskan ke bawah menjadi mata pena. -->
-    <path d="M -2.2 12 L 2.2 12 L 1.0 22 L 0 24.2 L -1.0 22 Z" fill="#F4F6F8"/>
-    <circle cx="0" cy="16" r="1.5" fill="#16324F"/>
+    <!-- Tangkainya diteruskan menjadi mata pena: ini tetap penyunting naskah. -->
+    <path d="M -2.2 12 L 2.2 12 L 1.0 22 L 0 24.2 L -1.0 22 Z" fill="#ffffff"/>
+    <circle cx="0" cy="16" r="1.4" fill="#003d7a"/>
   </g>
 </svg>
