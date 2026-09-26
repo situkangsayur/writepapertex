@@ -55,11 +55,23 @@ sungguhan hari ini alih-alih ditebak.
       itu akan jadi antrean yang tidak pernah habis.
 - [x] Ukuran APK: **76 MB**. Pustaka mesinnya 47 MB, dan 36 MB di antaranya
       data ICU.
+- [x] **Paket TeX ikut di dalam APK.** Cache Tectonic yang sudah terisi
+      (44 MB, 10 MB terkompresi) dibungkus sebagai aset dan dibongkar sekali
+      saat pertama dijalankan. Kompilasi pertama pun tidak perlu jaringan, dan
+      selesai **3,7 detik** pada pemasangan baru.
+      Sebelumnya paket itu diunduh satu per satu, dan satu unduhan yang gagal
+      berakhir sebagai `failed to open input file hyph-en-us.tex` — pesan yang
+      tidak menyebut jaringan sama sekali. Resepnya di
+      `scripts/build-tectonic-bundle.sh`.
+- [x] **Batas waktu 5 menit** dengan isolate yang benar-benar dimatikan, bukan
+      hanya future yang diabaikan. Tanpa ini, jaringan yang mati di tengah
+      membuat kompilasi menggantung selamanya dengan spinner yang tidak pernah
+      berhenti — dan itu yang dilaporkan terjadi.
+- [x] **Bilah progres** yang mengatakan apa yang sedang dikerjakan, dan
+      **waktu kompilasi** ditampilkan setelahnya supaya "lama" bisa diukur,
+      bukan hanya dirasakan.
 - [ ] Perkecil APK: data ICU bisa disaring, tapi harus dipastikan dulu apa
       yang dipakai XeTeX
-- [ ] Bundel paket TeX: kompilasi pertama mengunduh dan perlu jaringan
-      (~2 menit); sesudahnya luring. Perlu diputuskan apakah sebagian
-      dibundel
 - [x] Font: ternyata tidak jadi masalah — `XeTeXFontMgr_FC` berjalan tanpa
       berkas konfigurasi fontconfig untuk dokumen yang memakai font TeX
       bawaan. Akan jadi masalah kalau dokumennya meminta font sistem.
@@ -93,6 +105,16 @@ sungguhan hari ini alih-alih ditebak.
       semuanya di balik satu tombol lagi, dan itu melumpuhkan pengetikan LaTeX
 
 ## Fase 3 — Proyek
+
+- [x] **Layar pembuka lengkap**: lanjutkan proyek terakhir, buka folder, buka
+      berkas `.tex`, bongkar arsip ZIP, atau unduh langsung dari repositori
+      git. Yang terakhir memakai arsip HTTP biasa, jadi jalan di Android yang
+      tidak punya biner git — GitHub, GitLab, dan Gitea sendiri semuanya
+      dicoba bentuk alamatnya. 10 tes.
+- [x] **Simpan berkas, simpan PDF, dan ekspor proyek sebagai ZIP** — arsipnya
+      tidak memuat keluaran build, karena penerimanya menginginkan sumbernya
+      bukan PDF hasil kompilasi mesin orang lain.
+- [ ] Kirim balik ke repositori lewat git dari Android (lihat KT-6)
 
 - [x] Buat proyek baru dari templat: artikel, artikel dengan tabel, laporan
 - [ ] Templat IEEE dan skripsi

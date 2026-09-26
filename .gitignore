@@ -15,3 +15,7 @@ linux/flutter/ephemeral/
 # Pustaka mesin Tectonic: 47 MB, dibangun oleh
 # scripts/build-tectonic-android.sh, bukan disimpan di riwayat.
 android/app/src/main/jniLibs/
+
+# Cache Tectonic yang sudah terisi: 10 MB, dibangun oleh
+# scripts/build-tectonic-bundle.sh, bukan disimpan di riwayat.
+assets/bundle/

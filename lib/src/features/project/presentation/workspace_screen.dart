@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -16,6 +17,8 @@ import '../../git/data/git_cli_backend.dart';
 import '../../git/domain/git_backend.dart';
 import '../../git/presentation/git_panel.dart';
 import '../../table/presentation/table_editor_sheet.dart';
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import '../domain/latex_project.dart';
 
 /// Everything at once: files on the left, source in the middle, PDF on the
@@ -56,6 +59,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   bool _dirty = false;
   bool _compiling = false;
   CompileResult? _result;
+
+  /// Apa yang sedang dikerjakan mesin, ditampilkan selama kompilasi.
+  String _progress = '';
   LatexAutocomplete _autocomplete = const LatexAutocomplete();
   late final CwlRepository _cwl = CwlRepository(projectDir: _project.directory);
 
@@ -192,6 +198,60 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return end;
   }
 
+  /// Menyimpan PDF hasil kompilasi ke tempat yang dipilih pengguna.
+  Future<void> _savePdf() async {
+    final pdf = _result?.pdfPath;
+    if (pdf == null) {
+      _say('Belum ada PDF. Tekan Kompilasi dulu.');
+      return;
+    }
+    final uri = await FilePicker.saveFile(
+      fileName: '${_project.name}.pdf',
+      bytes: await File(pdf).readAsBytes(),
+      mimeType: 'application/pdf',
+      dialogTitle: 'Simpan PDF',
+    );
+    _say(uri == null ? 'Tidak jadi disimpan' : 'PDF disimpan');
+  }
+
+  /// Membungkus seluruh proyek jadi satu ZIP.
+  ///
+  /// Keluaran build sengaja tidak ikut: penerima arsip ini menginginkan
+  /// sumbernya, bukan PDF hasil kompilasi mesin orang lain.
+  Future<void> _exportZip() async {
+    await _save();
+    final archive = Archive();
+    final root = Directory(_project.directory);
+    for (final entity in root.listSync(recursive: true)) {
+      if (entity is! File) continue;
+      final relative = p.relative(entity.path, from: root.path);
+      if (p.split(relative).any((s) => s.startsWith('.'))) continue;
+      if (isGeneratedFile(relative)) continue;
+      final bytes = entity.readAsBytesSync();
+      archive.add(ArchiveFile(relative, bytes.length, bytes));
+    }
+
+    final bytes = ZipEncoder().encode(archive);
+    if (bytes.isEmpty) {
+      _say('Tidak ada berkas untuk diarsipkan');
+      return;
+    }
+    final uri = await FilePicker.saveFile(
+      fileName: '${_project.name}.zip',
+      bytes: Uint8List.fromList(bytes),
+      mimeType: 'application/zip',
+      dialogTitle: 'Ekspor proyek',
+    );
+    _say(uri == null ? 'Tidak jadi diekspor' : 'Proyek diekspor (${archive.length} berkas)');
+  }
+
+  void _say(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(duration: const Duration(seconds: 3), content: Text(message)));
+  }
+
   Future<void> _openGit() async {
     await showGitPanel(context, directory: _project.directory, backend: _git);
   }
@@ -206,11 +266,18 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Future<void> _compile() async {
     if (_compiling) return;
     await _save();
-    setState(() => _compiling = true);
+    setState(() {
+      _compiling = true;
+      _progress = 'Menyiapkan…';
+    });
     try {
       final result = await _engine.compile(
         projectDir: _project.directory,
         mainFile: _project.mainFile,
+        onOutput: (line) {
+          final text = line.trim();
+          if (text.isNotEmpty && mounted) setState(() => _progress = text);
+        },
       );
       if (!mounted) return;
       setState(() => _result = result);
@@ -222,7 +289,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         }
       }
     } finally {
-      if (mounted) setState(() => _compiling = false);
+      if (mounted) {
+        setState(() {
+          _compiling = false;
+          _progress = '';
+        });
+      }
     }
     await _rescanProject();
   }
@@ -240,7 +312,14 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           children: <Widget>[
             Text(_project.name, style: Theme.of(context).textTheme.titleSmall),
             Text(
-              '${_openFile ?? '—'}${_dirty ? ' •' : ''} · utama: ${_project.mainFile}',
+              <String>[
+                '${_openFile ?? '—'}${_dirty ? ' •' : ''}',
+                'utama: ${_project.mainFile}',
+                // Waktu kompilasi ditampilkan supaya "lama" bisa diukur, bukan
+                // hanya dirasakan: kompilasi pertama mengunduh paket TeX dan
+                // memang lama, sesudahnya seharusnya beberapa detik saja.
+                if (_result != null) 'kompilasi ${_formatDuration(_result!.duration)}',
+              ].join(' · '),
               style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
@@ -280,6 +359,46 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               if (_autoCompile) _scheduleAutoCompile();
             },
           ),
+          PopupMenuButton<String>(
+            tooltip: 'Simpan dan bagikan',
+            icon: const Icon(Icons.ios_share),
+            onSelected: (choice) => switch (choice) {
+              'simpan' => _save(),
+              'pdf' => _savePdf(),
+              _ => _exportZip(),
+            },
+            itemBuilder: (_) => const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'simpan',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.save_outlined),
+                  title: Text('Simpan berkas'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'pdf',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.picture_as_pdf_outlined),
+                  title: Text('Simpan PDF…'),
+                  subtitle: Text('hasil kompilasi terakhir'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'zip',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.folder_zip_outlined),
+                  title: Text('Ekspor proyek sebagai ZIP'),
+                  subtitle: Text('tanpa berkas hasil build'),
+                ),
+              ),
+            ],
+          ),
           IconButton(tooltip: 'Git', icon: const Icon(Icons.commit_outlined), onPressed: _openGit),
           FilledButton.tonalIcon(
             onPressed: (_compiling || _engineReady == false) ? null : _compile,
@@ -292,6 +411,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       drawer: layout.treeInDrawer ? Drawer(child: SafeArea(child: _fileTree())) : null,
       body: Column(
         children: <Widget>[
+          if (_compiling && _progress.isNotEmpty) _progressBar(scheme),
           if (_engineReady == false) _noEngineBar(scheme),
           if (_dangling.isNotEmpty) _danglingBar(scheme),
           if (errors.isNotEmpty) _errorBar(errors, scheme),
@@ -322,6 +442,34 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       ),
     );
   }
+
+  /// Mengatakan apa yang sedang dikerjakan selama kompilasi.
+  ///
+  /// Spinner yang diam selama dua menit tidak bisa dibedakan dari aplikasi
+  /// yang menggantung — dan itulah yang dilaporkan terjadi pada versi
+  /// sebelumnya.
+  Widget _progressBar(ColorScheme scheme) => Material(
+    color: scheme.secondaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: scheme.onSecondaryContainer),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _progress,
+              style: TextStyle(color: scheme.onSecondaryContainer, fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget _noEngineBar(ColorScheme scheme) => Material(
     color: scheme.tertiaryContainer,
@@ -369,6 +517,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       ),
     ),
   );
+
+  static String _formatDuration(Duration d) {
+    if (d.inMilliseconds < 1000) return '${d.inMilliseconds} md';
+    if (d.inSeconds < 60) return '${(d.inMilliseconds / 1000).toStringAsFixed(1)} dtk';
+    return '${d.inMinutes} mnt ${d.inSeconds % 60} dtk';
+  }
 
   Widget _errorBar(List<LatexMessage> errors, ColorScheme scheme) => Material(
     color: scheme.errorContainer,
