@@ -49,6 +49,8 @@ pub unsafe extern "C" fn wptex_compile(
     out_path: *const c_char,
     cache_dir: *const c_char,
     progress_path: *const c_char,
+    // 0 = satu lintasan, selain itu = lintasan penuh dengan BibTeX.
+    full_pass: c_int,
     err_buf: *mut c_char,
     err_len: usize,
 ) -> c_int {
@@ -83,7 +85,12 @@ pub unsafe extern "C" fn wptex_compile(
     // mematikan seluruh aplikasi; di perangkat hasilnya SIGABRT dan layar
     // kembali ke peluncur tanpa penjelasan apa pun.
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile::run(tex, &out_dir, progress)
+        compile::run(
+            tex,
+            &out_dir,
+            progress,
+            if full_pass == 0 { compile::Mode::Quick } else { compile::Mode::Full },
+        )
     }));
 
     let result = match outcome {

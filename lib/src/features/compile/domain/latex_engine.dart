@@ -53,6 +53,22 @@ class LatexMessage {
 /// a desktop has TeX Live installed, an Android tablet has nothing at all.
 /// The editor talks to this interface so that neither has to know about the
 /// other.
+/// Seberapa jauh satu kompilasi dijalankan.
+///
+/// Menekan Kompilasi berpuluh kali sehari hampir selalu untuk melihat satu
+/// paragraf yang baru diubah; satu lintasan sudah cukup untuk itu. Lintasan
+/// penuh — daftar pustaka dan pengulangan sampai nomor rujukannya mantap —
+/// memakan waktu berlipat, dan hanya perlu menjelang dibaca orang lain.
+enum CompilePass {
+  quick('Cepat', 'satu lintasan, rujukan baru bisa tampil ??'),
+  full('Lengkap', 'dengan daftar pustaka dan pengulangan');
+
+  const CompilePass(this.label, this.hint);
+
+  final String label;
+  final String hint;
+}
+
 abstract class LatexEngine {
   /// A name for the user, e.g. "latexmk (TeX Live)".
   String get name;
@@ -66,6 +82,7 @@ abstract class LatexEngine {
   Future<CompileResult> compile({
     required String projectDir,
     required String mainFile,
+    CompilePass pass = CompilePass.full,
     void Function(String line)? onOutput,
   });
 }

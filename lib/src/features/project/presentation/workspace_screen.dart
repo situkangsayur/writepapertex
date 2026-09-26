@@ -86,6 +86,13 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// count as the user typing.
   bool _loadingFile = false;
 
+  /// Lintasan yang dipakai tombol Kompilasi.
+  ///
+  /// Cepat sebagai bawaan: yang paling sering diinginkan adalah melihat satu
+  /// paragraf yang baru diubah, bukan daftar pustaka yang sudah benar sejak
+  /// kemarin.
+  CompilePass _pass = CompilePass.quick;
+
   /// Recompile by itself once typing pauses.
   bool _autoCompile = false;
   Timer? _autoTimer;
@@ -116,6 +123,12 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// Folder yang sedang terbuka di pohon berkas.
   final Set<String> _expanded = <String>{};
 
+  /// Berapa bagian lebar yang diberikan ke penyunting, sisanya ke pratinjau.
+  ///
+  /// Menulis tabel butuh kode yang lebar; memeriksa hasil butuh halaman yang
+  /// lebar. Perbandingan tetap memaksa memilih salah satu untuk selamanya.
+  double _split = 0.55;
+
   /// Kept across rebuilds so a recompile does not throw the writer back to
   /// page one — which is what makes an iterative document unbearable.
   int _pdfPage = 1;
@@ -129,12 +142,44 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _checkEngine();
     _loadToken();
     _loadPalette();
+    _loadPass();
+    _loadSplit();
   }
 
   /// Memuat palet warna yang dipilih terakhir kali.
   Future<void> _loadPalette() async {
     final id = await widget.store.paletteId();
     if (id != null && mounted) setState(() => _editor.palette = SyntaxPalette.byId(id));
+  }
+
+  Future<void> _loadSplit() async {
+    final saved = await widget.store.splitRatio();
+    if (saved != null && mounted) setState(() => _split = saved);
+  }
+
+  Future<void> _loadPass() async {
+    final saved = await widget.store.compilePass();
+    if (saved == null || !mounted) return;
+    setState(() => _pass = saved == CompilePass.full.name ? CompilePass.full : CompilePass.quick);
+  }
+
+  Future<void> _setPass(CompilePass pass) async {
+    setState(() => _pass = pass);
+    await widget.store.saveCompilePass(pass.name);
+    _say('Kompilasi ${pass.label.toLowerCase()}: ${pass.hint}');
+  }
+
+  /// Mengunduh paket dan font yang dibutuhkan dokumen ini, sekali saja.
+  ///
+  /// Paketnya dipakai bersama semua proyek — yang diunduh untuk proposal
+  /// dipakai lagi oleh artikel berikutnya — jadi ini menyakitkan sekali lalu
+  /// tidak pernah lagi.
+  Future<void> _fetchDependencies() async {
+    _say('Mengunduh paket yang dibutuhkan dokumen ini…');
+    await _compile(pass: CompilePass.full);
+    if (mounted && (_result?.ok ?? false)) {
+      _say('Paketnya sudah tersimpan dan dipakai bersama proyek lain.');
+    }
   }
 
   /// Memilih palet warna editor.
@@ -415,7 +460,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   void _scheduleAutoCompile() {
     _autoTimer?.cancel();
     _autoTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted && !_compiling) _compile();
+      // Kompilasi otomatis selalu lintasan cepat: ia berjalan sambil orang
+      // mengetik, dan lintasan penuh akan membuat setiap jeda mengetik
+      // berbuntut satu menit kerja mesin.
+      if (mounted && !_compiling) _compile(pass: CompilePass.quick);
     });
   }
 
@@ -673,7 +721,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _say('Kompilasi ditinggalkan. Mesinnya masih menyelesaikan di latar.');
   }
 
-  Future<void> _compile() async {
+  Future<void> _compile({CompilePass? pass}) async {
     if (_compiling) return;
     await _save();
     final run = ++_compileRun;
@@ -692,6 +740,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       final result = await _engine.compile(
         projectDir: _project.directory,
         mainFile: _project.mainFile,
+        pass: pass ?? _pass,
         onOutput: (line) {
           final text = line.trim();
           if (text.isNotEmpty && mounted && run == _compileRun) {
@@ -864,9 +913,44 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           ),
           IconButton(tooltip: 'Git', icon: const Icon(Icons.commit_outlined), onPressed: _openGit),
           FilledButton.tonalIcon(
-            onPressed: (_compiling || _engineReady == false) ? null : _compile,
+            onPressed: (_compiling || _engineReady == false) ? null : () => _compile(),
             icon: const Icon(Icons.play_arrow, size: 18),
-            label: const Text('Kompilasi'),
+            label: Text('Kompilasi ${_pass.label.toLowerCase()}'),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Cara kompilasi',
+            icon: const Icon(Icons.arrow_drop_down),
+            onSelected: (choice) => switch (choice) {
+              'cepat' => _setPass(CompilePass.quick),
+              'lengkap' => _setPass(CompilePass.full),
+              _ => _fetchDependencies(),
+            },
+            itemBuilder: (_) => <PopupMenuEntry<String>>[
+              for (final pass in CompilePass.values)
+                PopupMenuItem<String>(
+                  value: pass == CompilePass.quick ? 'cepat' : 'lengkap',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _pass == pass ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    ),
+                    title: Text(pass.label),
+                    subtitle: Text(pass.hint),
+                  ),
+                ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'unduh',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.cloud_download_outlined),
+                  title: Text('Unduh paket yang dibutuhkan'),
+                  subtitle: Text('sekali saja, lalu dipakai bersama proyek lain'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 8),
         ],
@@ -885,19 +969,44 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   SizedBox(width: 240, child: _fileTree()),
                   const VerticalDivider(width: 1),
                 ],
-                Expanded(
-                  flex: 5,
-                  child: LatexEditor(
-                    controller: _editor,
-                    autocomplete: _autocomplete,
-                    showKeyRow: isTouchPlatform,
-                    onSave: _save,
+                if (!layout.showsSourceAndPdf)
+                  Expanded(
+                    child: LatexEditor(
+                      controller: _editor,
+                      autocomplete: _autocomplete,
+                      showKeyRow: isTouchPlatform,
+                      onSave: _save,
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final editorWidth = constraints.maxWidth * _split;
+                        return Row(
+                          children: <Widget>[
+                            SizedBox(
+                              width: editorWidth,
+                              child: LatexEditor(
+                                controller: _editor,
+                                autocomplete: _autocomplete,
+                                showKeyRow: isTouchPlatform,
+                                onSave: _save,
+                              ),
+                            ),
+                            _SplitHandle(
+                              onDrag: (dx) {
+                                final ratio = (editorWidth + dx) / constraints.maxWidth;
+                                setState(() => _split = ratio.clamp(0.2, 0.85));
+                              },
+                              onDone: () => widget.store.saveSplitRatio(_split),
+                            ),
+                            Expanded(child: _preview(scheme)),
+                          ],
+                        );
+                      },
+                    ),
                   ),
-                ),
-                if (layout.showsSourceAndPdf) ...<Widget>[
-                  const VerticalDivider(width: 1),
-                  Expanded(flex: 4, child: _preview(scheme)),
-                ],
               ],
             ),
           ),
@@ -1140,9 +1249,70 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       params: PdfViewerParams(
         backgroundColor: scheme.surfaceContainerHighest,
         margin: 8,
+        // Bilah gulir yang bisa diseret: menggeser 40 halaman dengan
+        // sapuan jari satu per satu bukan cara membaca hasil kompilasi.
+        viewerOverlayBuilder: (context, size, handleLinkTap) => <Widget>[
+          PdfViewerScrollThumb(
+            controller: _pdf,
+            thumbSize: const Size(44, 36),
+            thumbBuilder: (context, thumbSize, pageNumber, controller) => Material(
+              color: scheme.secondary,
+              borderRadius: BorderRadius.circular(6),
+              child: Center(
+                child: Text(
+                  '${pageNumber ?? 1}',
+                  style: TextStyle(color: scheme.onSecondary, fontSize: 12),
+                ),
+              ),
+            ),
+          ),
+        ],
         onPageChanged: (n) {
           if (n != null) _pdfPage = n;
         },
+      ),
+    );
+  }
+}
+
+/// Batang tipis di antara kode dan pratinjau, yang bisa diseret.
+///
+/// Dibuat selebar 10 piksel dengan kursor dan warna yang berubah saat
+/// disentuh: pemisah setipis satu piksel benar dalam gambar rancangan dan
+/// mustahil ditangkap dengan jari.
+class _SplitHandle extends StatefulWidget {
+  const _SplitHandle({required this.onDrag, required this.onDone});
+
+  final void Function(double dx) onDrag;
+  final VoidCallback onDone;
+
+  @override
+  State<_SplitHandle> createState() => _SplitHandleState();
+}
+
+class _SplitHandleState extends State<_SplitHandle> {
+  bool _active = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _active = true),
+      onExit: (_) => setState(() => _active = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (d) => widget.onDrag(d.delta.dx),
+        onHorizontalDragEnd: (_) => widget.onDone(),
+        child: SizedBox(
+          width: 10,
+          child: Center(
+            child: Container(
+              width: _active ? 3 : 1,
+              color: _active ? scheme.primary : Theme.of(context).dividerColor,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -174,21 +174,38 @@ class WorkspaceStore {
   Future<File> _editorFile() async => File(p.join((await _base()).path, 'editor.json'));
 
   /// Palet warna editor yang dipilih terakhir kali.
-  Future<String?> paletteId() async {
+  Future<String?> paletteId() async => (await _editor())['palette'];
+
+  Future<void> savePaletteId(String id) async => _saveEditor(<String, String>{'palette': id});
+
+  /// Lintasan kompilasi yang dipilih terakhir kali: `cepat` atau `lengkap`.
+  Future<String?> compilePass() async => (await _editor())['pass'];
+
+  Future<void> saveCompilePass(String value) async => _saveEditor(<String, String>{'pass': value});
+
+  /// Bagian lebar yang diberikan ke penyunting, sisanya ke pratinjau PDF.
+  Future<double?> splitRatio() async => double.tryParse((await _editor())['split'] ?? '');
+
+  Future<void> saveSplitRatio(double value) async =>
+      _saveEditor(<String, String>{'split': value.toStringAsFixed(3)});
+
+  Future<Map<String, String>> _editor() async {
     final file = await _editorFile();
-    if (!file.existsSync()) return null;
+    if (!file.existsSync()) return <String, String>{};
     try {
       final json = jsonDecode(await file.readAsString());
-      return json is Map ? json['palette'] as String? : null;
+      if (json is! Map) return <String, String>{};
+      return json.map((k, v) => MapEntry(k.toString(), v.toString()));
     } on FormatException {
-      return null;
+      return <String, String>{};
     }
   }
 
-  Future<void> savePaletteId(String id) async {
+  Future<void> _saveEditor(Map<String, String> changes) async {
+    final merged = <String, String>{...await _editor(), ...changes};
     final file = await _editorFile();
     await file.parent.create(recursive: true);
-    await file.writeAsString('${jsonEncode(<String, String>{'palette': id})}\n', flush: true);
+    await file.writeAsString('${jsonEncode(merged)}\n', flush: true);
   }
 
   // ------------------------------------------------------------------- token

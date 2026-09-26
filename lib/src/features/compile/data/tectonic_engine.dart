@@ -13,19 +13,38 @@ import '../domain/latex_engine.dart';
 
 /// Tanda tangan C dari `wptex_compile`.
 typedef _CompileNative =
-    Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Size);
+    Int32 Function(
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      Int32,
+      Pointer<Utf8>,
+      Size,
+    );
 typedef _CompileDart =
-    int Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int);
+    int Function(
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      Pointer<Utf8>,
+      int,
+      Pointer<Utf8>,
+      int,
+    );
 
 /// Argumen untuk isolate, karena kompilasi memblokir dan bisa berjalan lama.
 class _Job {
-  const _Job(this.tex, this.out, this.cache, this.progress);
+  const _Job(this.tex, this.out, this.cache, this.progress, this.fullPass);
   final String tex;
   final String out;
   final String cache;
 
   /// Berkas tempat mesinnya menuliskan langkah demi langkah.
   final String progress;
+
+  /// True menjalankan BibTeX dan mengulang TeX sampai rujukannya mantap.
+  final bool fullPass;
 }
 
 /// Mesin TeX yang ikut di dalam aplikasi.
@@ -73,6 +92,7 @@ class TectonicEngine implements LatexEngine {
   Future<CompileResult> compile({
     required String projectDir,
     required String mainFile,
+    CompilePass pass = CompilePass.full,
     void Function(String line)? onOutput,
   }) async {
     final started = DateTime.now();
@@ -122,7 +142,7 @@ class TectonicEngine implements LatexEngine {
     final ({int code, String message}) outcome;
     try {
       outcome = await _runWithLimit(
-        _Job(p.join(projectDir, mainFile), outPath, cache, progressPath),
+        _Job(p.join(projectDir, mainFile), outPath, cache, progressPath, pass == CompilePass.full),
         idleTimeout,
         () => lastActivity,
       );
@@ -271,7 +291,7 @@ class TectonicEngine implements LatexEngine {
     final progress = job.progress.toNativeUtf8();
     final err = calloc<Uint8>(errLen).cast<Utf8>();
     try {
-      final code = compile(tex, out, cache, progress, err, errLen);
+      final code = compile(tex, out, cache, progress, job.fullPass ? 1 : 0, err, errLen);
       final message = code == 0 ? '' : err.toDartString();
       return (code: code, message: message.isEmpty ? 'Kompilasi gagal (kode $code)' : message);
     } finally {

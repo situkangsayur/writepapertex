@@ -145,23 +145,32 @@ class _LatexEditorState extends State<LatexEditor> {
                         },
                       ),
                     },
-                    child: TextField(
-                      controller: widget.controller,
-                      focusNode: _focus,
-                      scrollController: _scroll,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      keyboardType: TextInputType.multiline,
-                      // Autocorrect rewrites \section into \Section, and
-                      // suggestions fight the completion list for the same
-                      // strip of screen.
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 14, height: 1.45),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    // Bilah gulir yang bisa diseret: berkas bab yang panjang
+                    // tidak pantas dijelajahi dengan sapuan jari berulang.
+                    child: Scrollbar(
+                      controller: _scroll,
+                      thumbVisibility: true,
+                      interactive: true,
+                      child: TextField(
+                        controller: widget.controller,
+                        focusNode: _focus,
+                        scrollController: _scroll,
+                        maxLines: null,
+                        expands: true,
+                        textAlignVertical: TextAlignVertical.top,
+                        keyboardType: TextInputType.multiline,
+                        // Autocorrect rewrites \section into \Section, and
+                        // suggestions fight the completion list for the same
+                        // strip of screen.
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 14, height: 1.45),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          // Ruang di kanan supaya tulisannya tidak tertutup
+                          // bilah gulir.
+                          contentPadding: EdgeInsets.fromLTRB(14, 12, 24, 12),
+                        ),
                       ),
                     ),
                   ),

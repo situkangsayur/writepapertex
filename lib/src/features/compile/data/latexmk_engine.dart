@@ -44,6 +44,7 @@ class LatexmkEngine implements LatexEngine {
   Future<CompileResult> compile({
     required String projectDir,
     required String mainFile,
+    CompilePass pass = CompilePass.full,
     void Function(String line)? onOutput,
   }) async {
     final started = DateTime.now();
@@ -52,8 +53,14 @@ class LatexmkEngine implements LatexEngine {
 
     // -file-line-error is what makes the log carry "file:line:" prefixes,
     // without which a message cannot be shown next to the code that caused it.
+    // Lintasan cepat memanggil mesinnya langsung, sekali jalan. latexmk
+    // memang pandai memutuskan berapa kali perlu mengulang, dan itu justru
+    // yang memakan waktu saat yang diinginkan hanyalah melihat satu paragraf
+    // yang baru diubah.
+    final quick = pass == CompilePass.quick;
+    final program = quick ? tool : executable;
     final args = <String>[
-      '-$tool',
+      if (!quick) '-$tool',
       '-interaction=nonstopmode',
       '-file-line-error',
       '-halt-on-error',
@@ -64,7 +71,7 @@ class LatexmkEngine implements LatexEngine {
 
     final Process process;
     try {
-      process = await Process.start(executable, args, workingDirectory: projectDir);
+      process = await Process.start(program, args, workingDirectory: projectDir);
     } on ProcessException catch (e) {
       return CompileResult(
         ok: false,

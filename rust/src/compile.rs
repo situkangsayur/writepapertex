@@ -17,7 +17,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use tectonic::config::PersistentConfig;
-use tectonic::driver::{OutputFormat, ProcessingSessionBuilder};
+use tectonic::driver::{OutputFormat, PassSetting, ProcessingSessionBuilder};
 use tectonic::status::{MessageKind, StatusBackend};
 // Dua tipe galat yang berbeda hidup berdampingan di sini: penampung status
 // memakai `anyhow::Error` milik tectonic_errors, sedangkan API sesi masih
@@ -80,7 +80,26 @@ impl StatusBackend for ProgressStatus {
 /// diberikan lewat jalur — bukan isinya — supaya `\jobname`, `\input` yang
 /// relatif, dan berkas bantu seperti `.aux` semuanya bernama seperti yang
 /// diharapkan dokumen dan mesin bibliografinya.
-pub fn run(tex: &str, out_dir: &str, progress: &str) -> tectonic::errors::Result<PathBuf> {
+/// Seberapa jauh kompilasinya dijalankan.
+///
+/// Menulis paper berarti menekan Kompilasi berpuluh kali sehari, dan hampir
+/// semuanya hanya untuk melihat satu paragraf yang baru diubah. Untuk itu
+/// satu lintasan sudah cukup. Lintasan penuh — BibTeX lalu TeX diulang
+/// sampai rujukannya mantap — memakan waktu berlipat, dan hanya perlu saat
+/// daftar pustaka atau nomor rujukannya yang sedang dilihat.
+pub enum Mode {
+    /// Satu lintasan TeX. Rujukan yang baru ditambahkan bisa muncul `??`.
+    Quick,
+    /// BibTeX dan pengulangan sampai mantap.
+    Full,
+}
+
+pub fn run(
+    tex: &str,
+    out_dir: &str,
+    progress: &str,
+    mode: Mode,
+) -> tectonic::errors::Result<PathBuf> {
     let mut status = ProgressStatus::new(Path::new(progress));
     status.line("Menyiapkan sesi…");
 
@@ -108,9 +127,16 @@ pub fn run(tex: &str, out_dir: &str, progress: &str) -> tectonic::errors::Result
         .keep_intermediates(true)
         .keep_logs(true)
         .print_stdout(false)
-        .output_format(OutputFormat::Pdf);
+        .output_format(OutputFormat::Pdf)
+        .pass(match mode {
+            Mode::Quick => PassSetting::Tex,
+            Mode::Full => PassSetting::Default,
+        });
 
-    status.line("Menjalankan LaTeX…");
+    status.line(match mode {
+        Mode::Quick => "Menjalankan LaTeX (satu lintasan)…",
+        Mode::Full => "Menjalankan LaTeX, BibTeX, lalu mengulang…",
+    });
     let mut session = builder.create(&mut status)?;
     session.run(&mut status)?;
     status.line("Selesai.");
