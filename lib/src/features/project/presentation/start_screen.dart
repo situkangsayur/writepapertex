@@ -6,9 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../git/data/git_cli_backend.dart';
+import '../../git/data/git_ffi_backend.dart';
+import '../../git/domain/git_backend.dart';
 import '../data/project_import.dart';
-import '../data/recent_projects.dart';
+import '../data/workspace_store.dart';
 import '../domain/latex_project.dart';
+import '../domain/project_profile.dart';
 import 'workspace_screen.dart';
 
 /// Layar pembuka: lanjutkan yang terakhir, buka dari mana pun, atau mulai baru.
@@ -23,17 +27,23 @@ class StartScreen extends StatefulWidget {
 }
 
 class _StartScreenState extends State<StartScreen> {
-  final RecentProjects _recents = const RecentProjects();
+  final WorkspaceStore _store = WorkspaceStore();
   final ProjectImport _import = const ProjectImport();
 
-  List<RecentProject> _recent = const <RecentProject>[];
+  List<ProjectProfile> _projects = const <ProjectProfile>[];
   String? _error;
   String? _busy;
+
+  /// libgit2 di Android karena tidak ada biner git di sana; biner git di
+  /// desktop karena sudah terpasang.
+  GitBackend _gitBackend(String? token, String username) => Platform.isAndroid || Platform.isIOS
+      ? GitFfiBackend(token: token, username: username)
+      : GitCliBackend(token: token, username: username);
 
   @override
   void initState() {
     super.initState();
-    _loadRecents();
+    _loadProjects();
     final folder = widget.initialFolder;
     if (folder == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -45,18 +55,35 @@ class _StartScreenState extends State<StartScreen> {
     });
   }
 
-  Future<void> _loadRecents() async {
-    final list = await _recents.load();
-    if (mounted) setState(() => _recent = list);
+  Future<void> _loadProjects() async {
+    final list = await _store.load();
+    if (mounted) setState(() => _projects = list);
   }
 
-  Future<void> _open(LatexProject project) async {
-    await _recents.remember(project.directory);
+  /// Membuka proyek di ruang kerja, mencatatnya sebagai proyek yang dikenal.
+  Future<void> _open(
+    LatexProject project, {
+    String? remoteUrl,
+    String? branch,
+    String? token,
+    String? username,
+  }) async {
+    final profile = await _store.remember(
+      project.directory,
+      remoteUrl: remoteUrl,
+      branch: branch,
+      httpsUsername: username,
+    );
+    if (token != null && token.isNotEmpty) {
+      await _store.saveToken(profile.id, token);
+    }
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => WorkspaceScreen(project: project)));
-    await _loadRecents();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WorkspaceScreen(project: project, profile: profile, store: _store),
+      ),
+    );
+    await _loadProjects();
   }
 
   /// Folder tempat proyek hasil impor dan templat disimpan.
@@ -135,26 +162,115 @@ class _StartScreenState extends State<StartScreen> {
     await _open(project);
   });
 
+  /// Menyalin repositori git, lalu membukanya.
+  ///
+  /// Clone sungguhan lebih dulu: itu membawa riwayatnya, jadi perubahan bisa
+  /// dikirim balik. Kalau clone gagal — biasanya karena repositorinya tertutup
+  /// dan tokennya belum diisi — arsipnya diunduh sebagai cadangan, dan
+  /// dikatakan terang-terangan bahwa salinan itu tidak bisa dikirim balik.
   Future<void> _openRepository() async {
     final input = await _askRepository();
     if (input == null) return;
-    await _guard('Mengunduh repositori…', () async {
-      final project = await _import.fromRepository(
-        repoUrl: input.url,
-        branch: input.branch,
-        baseDir: await _projectsRoot(),
-        onProgress: (m) {
-          if (mounted) setState(() => _busy = m);
+
+    await _guard('Menyalin repositori…', () async {
+      final root = await _projectsRoot();
+      final name = ProjectImport.repoName(input.url);
+      final target = p.join(root, name);
+
+      final existing = Directory(target);
+      if (existing.existsSync() && existing.listSync().isNotEmpty) {
+        // Folder yang sudah berisi clone dari alamat yang sama tinggal dibuka;
+        // mengunduhnya lagi akan membuang perubahan yang belum dikirim.
+        final backend = _gitBackend(input.token.isEmpty ? null : input.token, input.user);
+        if (await backend.isRepository(target)) {
+          await _open(
+            await LatexProject.open(target),
+            remoteUrl: input.url,
+            branch: input.branch,
+            token: input.token,
+            username: input.user,
+          );
+          return;
+        }
+        throw StateError('Folder "$name" sudah ada dan bukan repositori git');
+      }
+
+      final backend = _gitBackend(input.token.isEmpty ? null : input.token, input.user);
+      final clone = await backend.clone(
+        remoteUrl: input.url,
+        directory: target,
+        branch: input.branch.isEmpty ? null : input.branch,
+        onOutput: (line) {
+          final text = line.trim();
+          if (text.isNotEmpty && mounted) setState(() => _busy = text);
         },
       );
-      await _open(project);
+
+      if (clone.ok) {
+        await _open(
+          await LatexProject.open(target),
+          remoteUrl: input.url,
+          branch: input.branch,
+          token: input.token,
+          username: input.user,
+        );
+        return;
+      }
+
+      // Sisa folder dari clone yang gagal harus dibersihkan, atau pembongkaran
+      // arsipnya akan menolak folder yang sudah terisi.
+      if (existing.existsSync()) await existing.delete(recursive: true);
+
+      // Arsip hanya tersedia untuk repositori publik. Kalau tokennya diisi,
+      // repositorinya hampir pasti tertutup dan unduhan arsipnya akan menjawab
+      // "tidak ditemukan" — pesan yang menyesatkan, karena sebab sebenarnya
+      // ada pada clone tadi.
+      if (input.token.isNotEmpty) {
+        throw StateError('Clone gagal:\n${clone.output.trim()}');
+      }
+
+      if (mounted) setState(() => _busy = 'Clone gagal, mencoba mengunduh arsipnya…');
+      final LatexProject project;
+      try {
+        project = await _import.fromRepository(
+          repoUrl: input.url,
+          branch: input.branch,
+          baseDir: root,
+          onProgress: (m) {
+            if (mounted) setState(() => _busy = m);
+          },
+        );
+      } on Object catch (e) {
+        throw StateError('Clone gagal:\n${clone.output.trim()}\n\nUnduhan arsip juga gagal: $e');
+      }
+
+      if (mounted) {
+        setState(
+          () => _error =
+              'Diambil sebagai arsip, bukan clone git — riwayatnya tidak ikut '
+              'dan perubahan tidak bisa dikirim balik.\n\n'
+              'Sebab clone gagal:\n${clone.output.trim()}',
+        );
+      }
+      await _open(
+        project,
+        remoteUrl: input.url,
+        branch: input.branch,
+        token: input.token,
+        username: input.user,
+      );
     });
   }
 
-  Future<({String url, String branch})?> _askRepository() {
+  Future<({String url, String branch, String token, String user})?> _askRepository() async {
     final url = TextEditingController();
     final branch = TextEditingController();
-    return showDialog<({String url, String branch})>(
+    final token = TextEditingController();
+    // Nama pengguna yang dipakai terakhir kali ditawarkan lagi: orang yang
+    // sama biasanya memakai akun yang sama untuk semua papernya.
+    final user = TextEditingController(text: (await _store.lastIdentity())?.httpsUsername ?? '');
+    if (!mounted) return null;
+    return showDialog<({String url, String branch, String token, String user})>(
       context: context,
       builder: (context) => AlertDialog(
         scrollable: true,
@@ -166,8 +282,8 @@ class _StartScreenState extends State<StartScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               const Text(
-                'GitHub, GitLab, atau Gitea sendiri. Isinya diunduh sebagai '
-                'arsip, jadi tidak perlu git terpasang.',
+                'GitHub, GitLab, atau Gitea sendiri. Disalin dengan git, jadi '
+                'riwayatnya ikut dan perubahannya bisa dikirim balik.',
               ),
               const SizedBox(height: 12),
               TextField(
@@ -176,7 +292,7 @@ class _StartScreenState extends State<StartScreen> {
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   labelText: 'Alamat repositori',
-                  hintText: 'https://github.com/pemilik/nama',
+                  hintText: 'https://github.com/pemilik/nama.git',
                 ),
               ),
               const SizedBox(height: 10),
@@ -189,9 +305,31 @@ class _StartScreenState extends State<StartScreen> {
                 ),
               ),
               const SizedBox(height: 10),
+              TextField(
+                controller: user,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Nama pengguna git (boleh dikosongkan)',
+                  hintText: 'situkangsayur',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: token,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Token (untuk repositori tertutup)',
+                  hintText: 'github_pat_… atau token Gitea',
+                ),
+              ),
+              const SizedBox(height: 10),
               Text(
-                'Catatan: yang diunduh adalah salinan. Mengirim balik '
-                'perubahan lewat git baru tersedia di desktop.',
+                'Repositori publik tidak perlu token. GitHub menerima nama '
+                'pengguna apa pun asal tokennya benar; Gitea dan GitLab '
+                'memeriksanya. Yang dipakai HTTPS, bukan SSH: token bisa '
+                'dicabut satu per satu, sedangkan kunci privat yang '
+                'tertinggal di tablet tidak.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -204,9 +342,13 @@ class _StartScreenState extends State<StartScreen> {
               TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Batal')),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop((url: url.text.trim(), branch: branch.text.trim())),
-                child: const Text('Unduh'),
+                onPressed: () => Navigator.of(context).pop((
+                  url: url.text.trim(),
+                  branch: branch.text.trim(),
+                  token: token.text.trim(),
+                  user: user.text.trim(),
+                )),
+                child: const Text('Salin'),
               ),
             ],
           ),
@@ -275,25 +417,31 @@ class _StartScreenState extends State<StartScreen> {
                 const SizedBox(height: 16),
               ],
 
-              if (_recent.isNotEmpty) ...<Widget>[
+              if (_projects.isNotEmpty) ...<Widget>[
                 Text('Lanjutkan', style: text.titleMedium),
                 const SizedBox(height: 8),
-                for (final r in _recent.take(5))
+                for (final project in _projects.take(6))
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.history),
-                      title: Text(r.name),
-                      subtitle: Text(r.directory, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      leading: Icon(
+                        project.hasRemote ? Icons.cloud_outlined : Icons.folder_outlined,
+                      ),
+                      title: Text(project.name),
+                      subtitle: Text(
+                        project.hasRemote ? project.remoteLabel : project.directory,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       trailing: IconButton(
                         tooltip: 'Hapus dari daftar',
                         icon: const Icon(Icons.close, size: 18),
                         onPressed: () async {
-                          final list = await _recents.forget(r.directory);
-                          if (mounted) setState(() => _recent = list);
+                          final list = await _store.forget(project.id);
+                          if (mounted) setState(() => _projects = list);
                         },
                       ),
                       onTap: () => _guard('Membuka…', () async {
-                        await _open(await LatexProject.open(r.directory));
+                        await _open(await LatexProject.open(project.directory));
                       }),
                     ),
                   ),
@@ -329,7 +477,7 @@ class _StartScreenState extends State<StartScreen> {
                     ListTile(
                       leading: const Icon(Icons.cloud_download_outlined),
                       title: const Text('Repositori git'),
-                      subtitle: const Text('GitHub, GitLab, atau Gitea sendiri'),
+                      subtitle: const Text('clone dari GitHub, GitLab, atau Gitea sendiri'),
                       onTap: _openRepository,
                     ),
                   ],

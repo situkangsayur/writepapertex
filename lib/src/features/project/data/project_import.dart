@@ -136,6 +136,9 @@ class ProjectImport {
     return all ? '$first/' : '';
   }
 
+  /// Nama folder untuk sebuah alamat repositori.
+  static String repoName(String repoUrl) => _repoName(repoUrl);
+
   static String _repoName(String repoUrl) {
     final cleaned = repoUrl.trim().replaceAll(RegExp(r'\.git/?$'), '');
     final parts = cleaned.split(RegExp(r'[/:]')).where((s) => s.isNotEmpty).toList();
