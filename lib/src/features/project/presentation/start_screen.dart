@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../git/data/git_cli_backend.dart';
 import '../../git/data/git_ffi_backend.dart';
 import '../../git/domain/git_backend.dart';
+import '../../git/domain/git_messages.dart';
 import '../data/project_import.dart';
 import '../data/workspace_store.dart';
 import '../domain/latex_project.dart';
@@ -105,7 +106,10 @@ class _StartScreenState extends State<StartScreen> {
     try {
       await action();
     } on Object catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      // `StateError` mencetak dirinya dengan awalan "Bad state:", yang tidak
+      // berarti apa-apa bagi yang membacanya di layar.
+      final message = e is StateError ? e.message : '$e';
+      if (mounted) setState(() => _error = message);
     } finally {
       if (mounted) setState(() => _busy = null);
     }
@@ -174,7 +178,8 @@ class _StartScreenState extends State<StartScreen> {
 
     await _guard('Menyalin repositori…', () async {
       final root = await _projectsRoot();
-      final name = ProjectImport.repoName(input.url);
+      final url = normaliseRemoteUrl(input.url);
+      final name = ProjectImport.repoName(url);
       final target = p.join(root, name);
 
       final existing = Directory(target);
@@ -185,7 +190,7 @@ class _StartScreenState extends State<StartScreen> {
         if (await backend.isRepository(target)) {
           await _open(
             await LatexProject.open(target),
-            remoteUrl: input.url,
+            remoteUrl: url,
             branch: input.branch,
             token: input.token,
             username: input.user,
@@ -197,7 +202,7 @@ class _StartScreenState extends State<StartScreen> {
 
       final backend = _gitBackend(input.token.isEmpty ? null : input.token, input.user);
       final clone = await backend.clone(
-        remoteUrl: input.url,
+        remoteUrl: url,
         directory: target,
         branch: input.branch.isEmpty ? null : input.branch,
         onOutput: (line) {
@@ -209,7 +214,7 @@ class _StartScreenState extends State<StartScreen> {
       if (clone.ok) {
         await _open(
           await LatexProject.open(target),
-          remoteUrl: input.url,
+          remoteUrl: url,
           branch: input.branch,
           token: input.token,
           username: input.user,
@@ -226,14 +231,14 @@ class _StartScreenState extends State<StartScreen> {
       // "tidak ditemukan" — pesan yang menyesatkan, karena sebab sebenarnya
       // ada pada clone tadi.
       if (input.token.isNotEmpty) {
-        throw StateError('Clone gagal:\n${clone.output.trim()}');
+        throw StateError('Clone gagal.\n\n${explainGitFailure(clone.output)}');
       }
 
       if (mounted) setState(() => _busy = 'Clone gagal, mencoba mengunduh arsipnya…');
       final LatexProject project;
       try {
         project = await _import.fromRepository(
-          repoUrl: input.url,
+          repoUrl: url,
           branch: input.branch,
           baseDir: root,
           onProgress: (m) {
@@ -241,7 +246,10 @@ class _StartScreenState extends State<StartScreen> {
           },
         );
       } on Object catch (e) {
-        throw StateError('Clone gagal:\n${clone.output.trim()}\n\nUnduhan arsip juga gagal: $e');
+        throw StateError(
+          'Clone gagal, dan unduhan arsipnya juga gagal ($e).\n\n'
+          '${explainGitFailure(clone.output)}',
+        );
       }
 
       if (mounted) {
@@ -249,12 +257,12 @@ class _StartScreenState extends State<StartScreen> {
           () => _error =
               'Diambil sebagai arsip, bukan clone git — riwayatnya tidak ikut '
               'dan perubahan tidak bisa dikirim balik.\n\n'
-              'Sebab clone gagal:\n${clone.output.trim()}',
+              'Sebab clone gagal:\n${explainGitFailure(clone.output)}',
         );
       }
       await _open(
         project,
-        remoteUrl: input.url,
+        remoteUrl: url,
         branch: input.branch,
         token: input.token,
         username: input.user,

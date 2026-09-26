@@ -169,6 +169,28 @@ class WorkspaceStore {
     return kept;
   }
 
+  // --------------------------------------------------------------- tampilan
+
+  Future<File> _editorFile() async => File(p.join((await _base()).path, 'editor.json'));
+
+  /// Palet warna editor yang dipilih terakhir kali.
+  Future<String?> paletteId() async {
+    final file = await _editorFile();
+    if (!file.existsSync()) return null;
+    try {
+      final json = jsonDecode(await file.readAsString());
+      return json is Map ? json['palette'] as String? : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> savePaletteId(String id) async {
+    final file = await _editorFile();
+    await file.parent.create(recursive: true);
+    await file.writeAsString('${jsonEncode(<String, String>{'palette': id})}\n', flush: true);
+  }
+
   // ------------------------------------------------------------------- token
 
   Future<Map<String, String>> _credentials() async {

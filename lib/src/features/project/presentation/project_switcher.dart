@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../git/domain/git_messages.dart';
 import '../data/workspace_store.dart';
 import '../domain/project_profile.dart';
 
@@ -280,7 +281,7 @@ Future<RemoteSettings?> showRemoteEditor(
               onPressed: () => Navigator.of(context).pop(
                 RemoteSettings(
                   profile: profile.copyWith(
-                    remoteUrl: url.text.trim(),
+                    remoteUrl: normaliseRemoteUrl(url.text),
                     branch: branch.text.trim(),
                     httpsUsername: user.text.trim(),
                     authorName: authorName.text.trim(),

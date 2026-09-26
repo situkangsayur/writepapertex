@@ -12,7 +12,10 @@ import '../../compile/data/tectonic_engine.dart';
 import '../../compile/domain/latex_engine.dart';
 import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
+import '../../editor/domain/latex_syntax.dart';
+import '../../editor/presentation/highlighting_controller.dart';
 import '../../editor/presentation/latex_editor.dart';
+import '../../editor/presentation/syntax_palette.dart';
 import '../../git/data/git_cli_backend.dart';
 import '../../git/data/git_ffi_backend.dart';
 import '../../git/domain/git_backend.dart';
@@ -21,6 +24,7 @@ import '../../table/presentation/table_editor_sheet.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import '../data/workspace_store.dart';
+import '../domain/file_tree.dart';
 import '../domain/latex_project.dart';
 import '../domain/project_files.dart';
 import '../domain/project_profile.dart';
@@ -48,7 +52,7 @@ class WorkspaceScreen extends StatefulWidget {
 }
 
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
-  final TextEditingController _editor = TextEditingController();
+  final LatexHighlightingController _editor = LatexHighlightingController();
   final PdfViewerController _pdf = PdfViewerController();
 
   /// Tectonic di Android karena tidak ada TeX Live di sana; latexmk di
@@ -109,6 +113,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// `\ref` keys nothing in the project defines.
   List<DanglingReference> _dangling = const <DanglingReference>[];
 
+  /// Folder yang sedang terbuka di pohon berkas.
+  final Set<String> _expanded = <String>{};
+
   /// Kept across rebuilds so a recompile does not throw the writer back to
   /// page one — which is what makes an iterative document unbearable.
   int _pdfPage = 1;
@@ -121,6 +128,54 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _openRelative(_project.mainFile);
     _checkEngine();
     _loadToken();
+    _loadPalette();
+  }
+
+  /// Memuat palet warna yang dipilih terakhir kali.
+  Future<void> _loadPalette() async {
+    final id = await widget.store.paletteId();
+    if (id != null && mounted) setState(() => _editor.palette = SyntaxPalette.byId(id));
+  }
+
+  /// Memilih palet warna editor.
+  Future<void> _pickPalette() async {
+    final chosen = await showModalBottomSheet<SyntaxPalette>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          children: <Widget>[
+            Text('Warna editor', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 10),
+            for (final palette in SyntaxPalette.all)
+              ListTile(
+                leading: Icon(
+                  palette.id == _editor.palette.id
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(palette.name),
+                subtitle: Text(palette.description),
+                // Contoh kecil: lebih cepat dipahami daripada namanya.
+                trailing: Text(
+                  r'\section',
+                  style: styleFor(
+                    SyntaxKind.sectioning,
+                    palette,
+                    Theme.of(context).brightness,
+                  ).copyWith(fontFamily: 'monospace', fontSize: 13),
+                ),
+                onTap: () => Navigator.of(context).pop(palette),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() => _editor.palette = chosen);
+    await widget.store.savePaletteId(chosen.id);
   }
 
   Future<void> _loadToken() async {
@@ -383,6 +438,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   Future<void> _openRelative(String relative) async {
     if (_dirty) await _save();
+    // Berkas yang dibuka harus terlihat di pohonnya, walau folder induknya
+    // sedang tertutup.
+    _expanded.addAll(ancestorsOf(relative));
     final file = File(_project.absolute(relative));
     final text = file.existsSync() ? await file.readAsString() : '';
     if (!mounted) return;
@@ -743,6 +801,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               onPressed: _dirty ? _save : null,
             ),
           IconButton(
+            tooltip: 'Warna editor',
+            icon: const Icon(Icons.palette_outlined),
+            onPressed: _pickPalette,
+          ),
+          IconButton(
             tooltip: 'Sisipkan tabel',
             icon: const Icon(Icons.table_chart_outlined),
             onPressed: _insertTable,
@@ -986,39 +1049,69 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     ],
   );
 
-  Widget _fileList() => ListView(
-    children: <Widget>[
-      for (final relative in _project.files)
-        SizedBox(
-          height: treeRowHeight,
-          child: ListTile(
-            dense: true,
-            selected: relative == _openFile,
-            leading: Icon(
-              p.extension(relative) == '.tex'
-                  ? Icons.description_outlined
-                  : p.extension(relative) == '.bib'
-                  ? Icons.menu_book_outlined
-                  : Icons.insert_drive_file_outlined,
-              size: 18,
-            ),
-            title: Text(
-              relative,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: relative == _project.mainFile ? FontWeight.w700 : null,
-              ),
-            ),
-            // Tekan lama untuk memilih berkas utama: tebakannya benar hampir
-            // selalu, dan saat salah orang butuh jalan yang tidak berbelit.
-            onLongPress: p.extension(relative) == '.tex' && relative != _project.mainFile
-                ? () => _setMainFile(relative)
-                : null,
-            onTap: () => _openRelative(relative),
-          ),
+  Widget _fileList() {
+    final rows = <Widget>[];
+    void walk(List<FileNode> nodes, int depth) {
+      for (final node in nodes) {
+        if (node.isDirectory) {
+          final open = _expanded.contains(node.path);
+          rows.add(_treeRow(node, depth, open: open));
+          if (open) walk(node.children, depth + 1);
+        } else {
+          rows.add(_treeRow(node, depth, open: false));
+        }
+      }
+    }
+
+    walk(buildFileTree(_project.files), 0);
+    return ListView(children: rows);
+  }
+
+  Widget _treeRow(FileNode node, int depth, {required bool open}) {
+    final selected = !node.isDirectory && node.path == _openFile;
+    final isMain = !node.isDirectory && node.path == _project.mainFile;
+    return SizedBox(
+      height: treeRowHeight,
+      child: ListTile(
+        dense: true,
+        selected: selected,
+        contentPadding: EdgeInsets.only(left: 12 + depth * 14, right: 8),
+        horizontalTitleGap: 6,
+        leading: Icon(
+          node.isDirectory
+              ? (open ? Icons.folder_open : Icons.folder_outlined)
+              : switch (p.extension(node.name)) {
+                  '.tex' => Icons.description_outlined,
+                  '.bib' => Icons.menu_book_outlined,
+                  '.sty' || '.cls' => Icons.style_outlined,
+                  '.pdf' => Icons.picture_as_pdf_outlined,
+                  '.png' || '.jpg' || '.jpeg' || '.svg' => Icons.image_outlined,
+                  _ => Icons.insert_drive_file_outlined,
+                },
+          size: 18,
         ),
-    ],
-  );
+        title: Text(
+          node.name,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12.5, fontWeight: isMain ? FontWeight.w700 : null),
+        ),
+        // Berapa isinya, supaya folder yang tertutup tidak jadi teka-teki.
+        trailing: node.isDirectory
+            ? Text('${node.fileCount}', style: Theme.of(context).textTheme.labelSmall)
+            : null,
+        // Tekan lama untuk memilih berkas utama: tebakannya benar hampir
+        // selalu, dan saat salah orang butuh jalan yang tidak berbelit.
+        onLongPress: !node.isDirectory && p.extension(node.name) == '.tex' && !isMain
+            ? () => _setMainFile(node.path)
+            : null,
+        onTap: node.isDirectory
+            ? () => setState(() {
+                if (!_expanded.remove(node.path)) _expanded.add(node.path);
+              })
+            : () => _openRelative(node.path),
+      ),
+    );
+  }
 
   Widget _preview(ColorScheme scheme) {
     final pdfPath = _result?.pdfPath;

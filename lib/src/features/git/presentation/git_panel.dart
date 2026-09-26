@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/git_backend.dart';
+import '../domain/git_messages.dart';
 
 /// Clone, commit, pull and push, for whatever git server the project uses.
 Future<void> showGitPanel(
@@ -112,9 +113,10 @@ class _GitPanelState extends State<_GitPanel> {
     if (!mounted) return;
     setState(() {
       _busy = false;
-      // git's own words are kept: its errors are usually the clearest
-      // explanation available, and paraphrasing loses the useful part.
-      _log = result.message.isNotEmpty ? result.message : result.output.trim();
+      // Kata-kata git sendiri tetap dibawa; yang ditambahkan hanya kalimat
+      // pertama yang menyebut sebabnya, karena beberapa keluhannya —
+      // "too many redirects", misalnya — menunjuk ke arah yang salah.
+      _log = result.message.isNotEmpty ? result.message : explainGitFailure(result.output);
     });
     await _refresh();
   }
@@ -354,8 +356,11 @@ class _GitPanelState extends State<_GitPanel> {
                 if (remote.isEmpty) {
                   return const GitResult(ok: true, output: '', message: 'Repositori dibuat');
                 }
-                final set = await widget.backend.setRemote(widget.directory, remote);
-                if (set.ok) await widget.onRemoteSet?.call(remote);
+                final set = await widget.backend.setRemote(
+                  widget.directory,
+                  normaliseRemoteUrl(remote),
+                );
+                if (set.ok) await widget.onRemoteSet?.call(normaliseRemoteUrl(remote));
                 return set;
               }),
         icon: const Icon(Icons.add, size: 18),
