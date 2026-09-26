@@ -21,6 +21,11 @@ tectonic = { path = "..", default-features = false, features = [
   "serialization",
 ] }
 
+# libgit2 untuk Android. Protokol git-nya tidak ditulis ulang: yang sudah ada
+# dan teruji dipakai, dan pustakanya di-vendor supaya tidak bergantung pada
+# apa pun yang terpasang di perangkat.
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
+
 # Berdiri sendiri, bukan anggota workspace Tectonic.
 [workspace]
 

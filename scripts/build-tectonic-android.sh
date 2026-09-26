@@ -130,6 +130,37 @@ echo "Objek C/C++ AArch64: $(find "$out/build" -name '*.o' | wc -l)"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rm -rf "$WORK/tectonic-src/wptex_engine"
 cp -r "$here/rust" "$WORK/tectonic-src/wptex_engine"
+
+# --- 5a. OpenSSL yang bisa membaca berkas ---------------------------------
+#
+# `openssl-src` membangun OpenSSL untuk Android dengan `no-stdio`, dan itu
+# mematikan seluruh pemuatan sertifikat dari berkas: `SSL_CTX_load_verify_
+# locations` menjawab "BIO lib" apa pun berkas yang diberikan, dan setiap
+# clone HTTPS berakhir dengan "the SSL certificate is invalid". Komentar di
+# dalam crate itu sendiri mengakui hal ini ("most other platforms need it for
+# things like loading system certificates").
+#
+# Alasan aslinya adalah kegagalan build pada NDK lama; NDK yang dipakai di
+# sini punya stdio yang lengkap. Jadi barisnya dibuang, pada salinan — bukan
+# pada isi ~/.cargo/registry, yang diperiksa checksum-nya oleh cargo.
+srcdir="$(ls -d "$HOME"/.cargo/registry/src/*/openssl-src-* 2>/dev/null | sort | tail -1)"
+if [ -n "$srcdir" ]; then
+  patched="$WORK/openssl-src-stdio"
+  if [ ! -d "$patched" ]; then
+    echo "Menambal openssl-src: membuang no-stdio..."
+    cp -r "$srcdir" "$patched"
+    chmod -R u+w "$patched"
+    sed -i 's/^\( *\)configure.arg("no-stdio");/\1let _ = "no-stdio dibuang: sertifikat harus bisa dibaca dari berkas";/' \
+      "$patched/src/lib.rs"
+    grep -q 'no-stdio dibuang' "$patched/src/lib.rs" || { echo "Tambalan openssl-src gagal"; exit 1; }
+  fi
+  cat >> "$WORK/tectonic-src/wptex_engine/Cargo.toml" <<EOF
+
+[patch.crates-io]
+openssl-src = { path = "$patched" }
+EOF
+fi
+
 cd "$WORK/tectonic-src/wptex_engine"
 cargo ndk -t arm64-v8a build --release
 

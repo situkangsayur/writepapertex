@@ -7,18 +7,60 @@ Future<void> showGitPanel(
   BuildContext context, {
   required String directory,
   required GitBackend backend,
+  String suggestedRemote = '',
+  String branch = '',
+  String authorName = '',
+  String authorEmail = '',
+  Future<void> Function(String remoteUrl)? onRemoteSet,
+  Future<({String name, String email})?> Function()? onEditIdentity,
 }) => showModalBottomSheet<void>(
   context: context,
   showDragHandle: true,
   isScrollControlled: true,
-  builder: (context) => _GitPanel(directory: directory, backend: backend),
+  builder: (context) => _GitPanel(
+    directory: directory,
+    backend: backend,
+    suggestedRemote: suggestedRemote,
+    branch: branch,
+    authorName: authorName,
+    authorEmail: authorEmail,
+    onRemoteSet: onRemoteSet,
+    onEditIdentity: onEditIdentity,
+  ),
 );
 
 class _GitPanel extends StatefulWidget {
-  const _GitPanel({required this.directory, required this.backend});
+  const _GitPanel({
+    required this.directory,
+    required this.backend,
+    this.suggestedRemote = '',
+    this.branch = '',
+    this.authorName = '',
+    this.authorEmail = '',
+    this.onRemoteSet,
+    this.onEditIdentity,
+  });
 
   final String directory;
   final GitBackend backend;
+
+  /// Alamat yang sudah tercatat untuk proyek ini, ditawarkan sebagai isi awal.
+  final String suggestedRemote;
+  final String branch;
+
+  /// Nama dan surel yang dicantumkan pada commit.
+  final String authorName;
+  final String authorEmail;
+
+  /// Dipanggil setelah remote berhasil dipasang, supaya profil proyeknya ikut
+  /// mengingatnya.
+  final Future<void> Function(String remoteUrl)? onRemoteSet;
+
+  /// Membuka tempat mengisi nama pengguna, token, dan identitas penulis.
+  ///
+  /// Mengembalikan identitas yang baru, karena panel ini sudah terbuka saat
+  /// suntingannya terjadi dan tidak akan melihat perubahannya sendiri.
+  final Future<({String name, String email})?> Function()? onEditIdentity;
 
   @override
   State<_GitPanel> createState() => _GitPanelState();
@@ -33,9 +75,14 @@ class _GitPanelState extends State<_GitPanel> {
   bool _available = true;
   String _log = '';
 
+  /// Identitas yang dipakai commit berikutnya.
+  late String _authorName = widget.authorName;
+  late String _authorEmail = widget.authorEmail;
+
   @override
   void initState() {
     super.initState();
+    _remote.text = widget.suggestedRemote;
     _refresh();
   }
 
@@ -82,7 +129,10 @@ class _GitPanelState extends State<_GitPanel> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          // Naik setinggi papan ketik. Tanpa ini panelnya tertutup rapat oleh
+          // papan ketik begitu kolom pesan commit disentuh: yang mengetik
+          // tidak bisa melihat tulisannya sendiri, apalagi menekan Simpan.
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,6 +148,23 @@ class _GitPanelState extends State<_GitPanel> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   const Spacer(),
+                  if (widget.onEditIdentity != null)
+                    IconButton(
+                      tooltip: 'Akun dan identitas',
+                      icon: const Icon(Icons.manage_accounts_outlined, size: 20),
+                      onPressed: _busy
+                          ? null
+                          : () async {
+                              final identity = await widget.onEditIdentity!.call();
+                              if (identity != null && mounted) {
+                                setState(() {
+                                  _authorName = identity.name;
+                                  _authorEmail = identity.email;
+                                });
+                              }
+                              await _refresh();
+                            },
+                    ),
                   IconButton(
                     tooltip: 'Muat ulang',
                     icon: const Icon(Icons.refresh, size: 18),
@@ -105,6 +172,18 @@ class _GitPanelState extends State<_GitPanel> {
                   ),
                 ],
               ),
+
+              // Identitas yang belum diisi baru terasa akibatnya jauh di
+              // kemudian hari, saat riwayatnya dibaca orang lain — jadi
+              // dikatakan sekarang, di tempat commit dibuat.
+              Text(
+                _authorName.isEmpty
+                    ? 'Commit atas nama aplikasi — isi nama dan surel lewat ikon akun.'
+                    : 'Commit sebagai $_authorName'
+                          '${_authorEmail.isEmpty ? '' : ' <$_authorEmail>'}',
+                style: text.bodySmall?.copyWith(color: _authorName.isEmpty ? scheme.error : null),
+              ),
+              const SizedBox(height: 8),
 
               if (!_available)
                 Text(
@@ -172,6 +251,10 @@ class _GitPanelState extends State<_GitPanel> {
                       border: OutlineInputBorder(),
                       labelText: 'Pesan commit',
                     ),
+                    // Tanpa ini tombol Simpan tidak pernah menyala: keadaannya
+                    // bergantung pada isi kolom ini, dan tidak ada yang
+                    // membangun ulang saat orang mengetik.
+                    onChanged: (_) => setState(() {}),
                   ),
                 ],
 
@@ -187,6 +270,8 @@ class _GitPanelState extends State<_GitPanel> {
                               () => widget.backend.commitAll(
                                 widget.directory,
                                 message: _message.text.trim(),
+                                authorName: _authorName,
+                                authorEmail: _authorEmail,
                               ),
                             ),
                       icon: const Icon(Icons.check, size: 18),
@@ -260,13 +345,18 @@ class _GitPanelState extends State<_GitPanel> {
         onPressed: _busy
             ? null
             : () => _do(() async {
-                final init = await widget.backend.init(widget.directory);
+                final init = await widget.backend.init(
+                  widget.directory,
+                  branch: widget.branch.isEmpty ? 'main' : widget.branch,
+                );
                 if (!init.ok) return init;
                 final remote = _remote.text.trim();
                 if (remote.isEmpty) {
                   return const GitResult(ok: true, output: '', message: 'Repositori dibuat');
                 }
-                return widget.backend.setRemote(widget.directory, remote);
+                final set = await widget.backend.setRemote(widget.directory, remote);
+                if (set.ok) await widget.onRemoteSet?.call(remote);
+                return set;
               }),
         icon: const Icon(Icons.add, size: 18),
         label: const Text('Jadikan repositori'),
