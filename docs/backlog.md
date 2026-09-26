@@ -35,15 +35,23 @@ sungguhan hari ini alih-alih ditebak.
 - [x] Keluaran build ditaruh di `.writepapertex/build/`, bukan di sebelah sumbernya
 - [x] Pengurai log: `!` error, `berkas:baris:` error, dan peringatan LaTeX/Package/Class
 - [x] Pesan yang jelas ketika TeX Live tidak terpasang, bukan crash
-- [~] **Mesin Tectonic untuk Android** — dicoba sungguhan pada 2026-09-25 dan
-      **terhenti di titik yang jelas**: Tectonic bukan murni Rust, ia
-      membungkus XeTeX dan meminta tujuh pustaka C lewat `pkg-config` target.
-      Hanya `harfbuzz` yang punya opsi vendored; `fontconfig`, `freetype2`,
-      `graphite2`, `icu`, dan `png` harus dibangun sendiri untuk
-      `aarch64-linux-android` beserta sysroot `pkg-config`-nya. Rinciannya
-      di KT-2.
-- [ ] Bangun lima pustaka C itu untuk Android sebagai tahap tersendiri, dengan
-      skrip build dan artefak yang disimpan supaya tidak diulang
+- [x] **Tectonic terkompilasi untuk `aarch64-linux-android`** (2026-09-26).
+      `libtectonic.rlib` 1,6 MB dengan 170 objek C/C++ XeTeX AArch64.
+      Resepnya di `scripts/build-tectonic-android.sh`.
+      Kuncinya `TECTONIC_DEP_BACKEND=vcpkg`: vcpkg punya triplet
+      `arm64-android` dan membangun ketujuh pustaka C itu sendiri, jadi tidak
+      perlu menyiapkan sysroot pkg-config. Perkiraan "berhari-hari" pada
+      catatan sebelumnya ternyata jauh terlalu pesimistis.
+- [x] Ketujuh pustaka C terbangun: zlib, libpng, freetype2, graphite2, icu-uc,
+      icu-i18n, harfbuzz, fontconfig
+- [ ] **Bungkus jadi `cdylib` dan panggil dari Dart** lewat
+      `flutter_rust_bridge` — terkompilasi belum berarti bisa dipakai
+- [ ] Font: `XeTeXFontMgr_FC` mencari font lewat fontconfig dan Android tidak
+      punya berkas konfigurasinya; perlu diarahkan ke `/system/fonts`
+- [ ] Bundel paket TeX: Tectonic mengunduh sesuai kebutuhan, yang di tablet
+      berarti unduhan pertama yang besar dan perlu jaringan
+- [ ] Ukuran APK setelah mesinnya masuk
+- [ ] Jalankan kompilasi sungguhan di perangkat
 - [ ] Cadangan yang bisa dipakai hari ini: kompilasi di komputer, PDF-nya
       di-commit, tablet tinggal menarik — tanpa infrastruktur baru
 - [ ] Cadangan kedua: layanan kompilasi di komputer sendiri, dipanggil tablet

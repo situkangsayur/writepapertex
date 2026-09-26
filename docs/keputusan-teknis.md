@@ -40,7 +40,46 @@ Rust** persis seperti yang diminta, dan sudah ada preseden memakainya di
 Android lewat `cargo-ndk` (proyek TeXslate). Penyambungannya lewat
 `flutter_rust_bridge`, pola yang sama dengan rencana inti Rust di ReadPaper.
 
-### Hasil percobaan kompilasi silang (2026-09-25)
+### Terbangun (2026-09-26)
+
+**Tectonic berhasil dikompilasi untuk `aarch64-linux-android`.**
+`libtectonic.rlib` 1,6 MB, dengan 170 objek C/C++ XeTeX berarsitektur AArch64
+(diperiksa dengan `readelf`). Resepnya ada di
+`scripts/build-tectonic-android.sh` supaya tidak perlu ditemukan ulang.
+
+Kunci yang semula saya lewatkan: `tectonic_dep_support` mendukung **vcpkg**
+sebagai sumber dependensi lewat `TECTONIC_DEP_BACKEND`, bukan hanya
+pkg-config. vcpkg punya triplet `arm64-android` dan membangun ketujuh pustaka
+C itu sendiri. Itulah satu-satunya alasan pekerjaan ini selesai dalam hitungan
+menit, bukan berhari-hari seperti perkiraan saya sebelumnya.
+
+Empat hal yang menghambat di jalan, semuanya kecil setelah ketahuan:
+
+1. `fontconfig` butuh `gperf`, yang butuh `autoconf autoconf-archive automake
+   libtool` dari sistem.
+2. Dibangun dari **repositori Tectonic pada tag rilisnya**, bukan dari
+   crates.io. Menariknya sebagai dependensi biasa membuat cargo memilih versi
+   sub-crate terbaru yang sudah tidak sejalan, dan itu berakhir jadi
+   tarik-menarik versi tanpa ujung; repo membawa `Cargo.lock` yang cocok.
+3. Header **ICU 78 menuntut C++17**; Tectonic 0.15 masih menulis `-std=c++14`.
+4. Crate `time` yang terkunci tidak lagi terkompilasi dengan rustc masa kini,
+   dan lint `dangerous_implicit_autorefs` kini berstatus galat pada kode
+   bibtex lama.
+
+### Yang masih harus dikerjakan
+
+Terkompilasi bukan berarti sudah bisa dipakai. Sisanya:
+
+- [ ] Bungkus jadi `cdylib` dan panggil dari Dart lewat `flutter_rust_bridge`
+- [ ] Bundel: Tectonic mengunduh paket TeX sesuai kebutuhan. Di tablet itu
+      berarti unduhan pertama yang besar dan perlu jaringan — harus
+      diputuskan apakah dibundel sebagian atau diambil saat dibutuhkan
+- [ ] Ukuran APK setelah mesinnya masuk
+- [ ] Font: `XeTeXFontMgr_FC` mencari font lewat fontconfig, dan Android tidak
+      punya berkas konfigurasinya. Perlu diarahkan ke `/system/fonts`
+- [ ] Jalankan kompilasi sungguhan di perangkat
+
+### Catatan percobaan sebelumnya (2026-09-25)
 
 Dicoba sungguhan, bukan diperkirakan. `cargo-ndk` 4.1.2 dipasang, NDK 28.2
 dipakai, target `aarch64-linux-android` sudah ada. Hasilnya berhenti di satu
