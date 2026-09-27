@@ -169,6 +169,44 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _say('Kompilasi ${pass.label.toLowerCase()}: ${pass.hint}');
   }
 
+  /// Memperlihatkan berapa paket yang sudah tersimpan.
+  ///
+  /// Pertanyaannya wajar — "yang sudah diunduh, apakah benar tidak diunduh
+  /// lagi?" — dan jawabannya pantas berupa angka, bukan janji.
+  Future<void> _showCacheInfo() async {
+    final info = await TectonicEngine.cacheInfo();
+    if (!mounted) return;
+    final mb = (info.bytes / (1024 * 1024)).toStringAsFixed(1);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Paket TeX tersimpan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('${info.files} berkas · $mb MB'),
+            const SizedBox(height: 10),
+            const Text(
+              'Dipakai bersama semua proyek di aplikasi ini. Paket yang sudah '
+              'ada tidak pernah diunduh lagi, dan daftarnya bertambah sendiri '
+              'setiap kali sebuah dokumen memerlukan yang belum ada.',
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Pembaruan aplikasi hanya menambahkan paket yang belum ada; '
+              'yang sudah tersimpan tidak disentuh.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tutup')),
+        ],
+      ),
+    );
+  }
+
   /// Mengunduh paket dan font yang dibutuhkan dokumen ini, sekali saja.
   ///
   /// Paketnya dipakai bersama semua proyek — yang diunduh untuk proposal
@@ -923,6 +961,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             onSelected: (choice) => switch (choice) {
               'cepat' => _setPass(CompilePass.quick),
               'lengkap' => _setPass(CompilePass.full),
+              'paket' => _showCacheInfo(),
               _ => _fetchDependencies(),
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
@@ -948,6 +987,16 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   leading: Icon(Icons.cloud_download_outlined),
                   title: Text('Unduh paket yang dibutuhkan'),
                   subtitle: Text('sekali saja, lalu dipakai bersama proyek lain'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'paket',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.inventory_2_outlined),
+                  title: Text('Paket yang tersimpan'),
+                  subtitle: Text('berapa banyak, dan berapa besar'),
                 ),
               ),
             ],

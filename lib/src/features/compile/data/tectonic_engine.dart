@@ -108,9 +108,13 @@ class TectonicEngine implements LatexEngine {
     // per satu membuat kompilasi pertama makan menit dan bergantung jaringan
     // — dan satu unduhan yang gagal berakhir sebagai "failed to open input
     // file hyph-en-us.tex", yang tidak menyebut jaringan sama sekali.
-    if (await _needsUnpacking(cache)) {
+    // Penanda bundelnya: ukuran asetnya. Cukup untuk membedakan bundel yang
+    // berganti isi, dan tidak menuntut membaca 15 MB hanya untuk memutuskan.
+    final marker = '${(await rootBundle.load(_bundleAsset)).lengthInBytes}';
+    if (await _needsUnpacking(cache, marker)) {
       onOutput?.call('Menyiapkan paket TeX (sekali saja)…\n');
-      await _unpackBundle(cache);
+      final added = await _unpackBundle(cache, marker);
+      onOutput?.call('$added paket disiapkan.\n');
     }
 
     onOutput?.call('Menjalankan Tectonic…\n');
@@ -187,30 +191,72 @@ class TectonicEngine implements LatexEngine {
   /// Nama berkas penanda bahwa bundel sudah dibongkar seluruhnya.
   ///
   /// Ditulis paling akhir, jadi pembongkaran yang terputus di tengah tidak
-  /// akan dikira selesai.
+  /// akan dikira selesai. Isinya menyebut bundel yang mana — ukuran asetnya —
+  /// karena pembaruan aplikasi bisa membawa bundel yang lebih lengkap, dan
+  /// penanda yang hanya berarti "pernah dibongkar" akan membuat bundel baru
+  /// itu tidak pernah dipakai pada perangkat yang sudah memasang versi lama.
   static const String _stampFile = '.bundle-siap';
 
-  static Future<bool> _needsUnpacking(String cache) async =>
-      !File(p.join(cache, _stampFile)).existsSync();
+  static const String _bundleAsset = 'assets/bundle/tectonic-cache.zip';
+
+  static Future<bool> _needsUnpacking(String cache, String marker) async {
+    final stamp = File(p.join(cache, _stampFile));
+    if (!stamp.existsSync()) return true;
+    try {
+      return !(await stamp.readAsString()).contains(marker);
+    } on FileSystemException {
+      return true;
+    }
+  }
 
   /// Membongkar cache Tectonic dari aset ke [cache].
-  static Future<void> _unpackBundle(String cache) async {
-    final data = await rootBundle.load('assets/bundle/tectonic-cache.zip');
+  ///
+  /// Berkas yang sudah ada **tidak** ditimpa. Cache Tectonic beralamat isi —
+  /// nama berkasnya adalah sidik jarinya — jadi yang sudah ada pasti sama,
+  /// dan yang pernah diunduh sendiri oleh pengguna tetap utuh. Bundelnya
+  /// menambah, tidak pernah mengurangi.
+  static Future<int> _unpackBundle(String cache, String marker) async {
+    final data = await rootBundle.load(_bundleAsset);
     final archive = ZipDecoder().decodeBytes(data.buffer.asUint8List());
 
+    var added = 0;
     for (final entry in archive) {
       if (!entry.isFile) continue;
       final resolved = p.normalize(p.join(cache, entry.name));
       // Nama di dalam arsip tidak tepercaya walaupun arsipnya milik sendiri.
       if (!p.isWithin(cache, resolved)) continue;
       final file = File(resolved);
+      if (file.existsSync()) continue;
       await file.parent.create(recursive: true);
       await file.writeAsBytes(entry.readBytes() ?? const <int>[]);
+      added++;
     }
 
-    await File(
-      p.join(cache, _stampFile),
-    ).writeAsString('Dibongkar dari aset pada ${DateTime.now().toIso8601String()}\n');
+    await File(p.join(cache, _stampFile)).writeAsString(
+      'bundel: $marker\n'
+      'dibongkar: ${DateTime.now().toIso8601String()}\n'
+      'berkas baru: $added\n',
+    );
+    return added;
+  }
+
+  /// Berapa banyak paket yang sudah tersimpan, dan sebesar apa.
+  ///
+  /// Dipakai layar untuk menjawab pertanyaan yang wajar: apakah yang sudah
+  /// diunduh benar-benar tersimpan dan dipakai lagi oleh proyek berikutnya?
+  static Future<({int files, int bytes, String path})> cacheInfo() async {
+    final support = await getApplicationSupportDirectory();
+    final dir = Directory(p.join(support.path, 'tectonic-cache'));
+    if (!dir.existsSync()) return (files: 0, bytes: 0, path: dir.path);
+
+    var files = 0;
+    var bytes = 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      files++;
+      bytes += await entity.length();
+    }
+    return (files: files, bytes: bytes, path: dir.path);
   }
 
   /// Menjalankan kompilasi di isolate, dan menghentikannya kalau kelewat lama.
