@@ -1,0 +1,28 @@
+% Font diminta lewat NAMA BERKAS, bukan nama keluarga.
+%
+% Nama keluarga ("TeX Gyre Termes") dicarikan fontconfig, dan di komputer
+% pembuat bundel font itu memang sudah terpasang — jadi tidak pernah ikut
+% terunduh, dan di tablet hasilnya "The font texgyretermes-regular cannot be
+% found". Nama berkas memaksa pencariannya lewat TeX, yang berarti lewat
+% bundel Tectonic, yang berarti ikut tersimpan di cache.
+\documentclass[11pt,a4paper]{report}
+\usepackage{fontspec}
+\setmainfont{texgyretermes-regular.otf}[
+  BoldFont       = texgyretermes-bold.otf,
+  ItalicFont     = texgyretermes-italic.otf,
+  BoldItalicFont = texgyretermes-bolditalic.otf]
+\setsansfont{texgyreheros-regular.otf}[
+  BoldFont       = texgyreheros-bold.otf,
+  ItalicFont     = texgyreheros-italic.otf,
+  BoldItalicFont = texgyreheros-bolditalic.otf]
+\setmonofont{texgyrecursor-regular.otf}[
+  BoldFont       = texgyrecursor-bold.otf,
+  ItalicFont     = texgyrecursor-italic.otf,
+  BoldItalicFont = texgyrecursor-bolditalic.otf]
+\usepackage{unicode-math}
+\setmathfont{texgyretermes-math.otf}
+\begin{document}
+\chapter{Huruf}
+Tegak, \textbf{tebal}, \textit{miring}, \textbf{\textit{tebal miring}},
+\textsf{tanpa kait}, \texttt{mesin tik}. $\alpha\beta\gamma \sum_{i=1}^{n}$
+\end{document}

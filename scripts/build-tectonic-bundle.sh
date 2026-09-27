@@ -39,11 +39,44 @@ for name, body in blocks:
     print('templat:', name)
 PY
 
+# Dokumen "serba ada": memuat paket yang paling sering dipakai paper
+# sungguhan — amsmath, booktabs, TikZ, pgfplots, biblatex, dan font TeX Gyre
+# lewat fontspec. Templat aplikasi saja tidak cukup: sebuah disertasi
+# mengunduh berpuluh paket yang tak satu pun dipakai templat sederhana, dan
+# itulah lima menit yang dirasakan pada kompilasi pertama.
+cp "$here/scripts/bundle-docs/"*.tex "$work/"
+
+# Proyek sungguhan boleh ikut, supaya paket khas kampus atau penerbitnya —
+# kelas dokumen, gaya sitasi, font — ikut terbawa:
+#
+#   WPTEX_BUNDLE_REPO=https://user:token@github.com/pemilik/nama.git \
+#     ./scripts/build-tectonic-bundle.sh
+if [ -n "${WPTEX_BUNDLE_REPO:-}" ]; then
+  echo "Mengambil proyek contoh…"
+  GIT_TERMINAL_PROMPT=0 git clone --depth 1 "$WPTEX_BUNDLE_REPO" "$work/contoh" >/dev/null 2>&1 \
+    || echo "  (gagal, dilewati)"
+fi
+
+mkdir -p "$work/out"
 cd "$work"
 for f in *.tex; do
   echo "--- $f ---"
-  TECTONIC_APP_DIR="$cache" "$SRC/target/release/tectonic" -X compile --outdir "$work" "$f"
+  # Gagal tidak menghentikan: yang dikumpulkan adalah berkas yang terlanjur
+  # diunduh, dan sebagian dokumen contoh memang butuh alat luar seperti biber
+  # yang tidak ada di sini.
+  TECTONIC_APP_DIR="$cache" "$SRC/target/release/tectonic" \
+    -X compile --outdir "$work/out" "$f" 2>&1 | tail -2 || true
 done
+
+if [ -d "$work/contoh" ]; then
+  main="$(grep -rl '\\documentclass' "$work/contoh" --include='*.tex' | head -1)"
+  if [ -n "$main" ]; then
+    echo "--- $(basename "$main") (proyek contoh) ---"
+    ( cd "$(dirname "$main")" && TECTONIC_APP_DIR="$cache" \
+        "$SRC/target/release/tectonic" -X compile --outdir "$work/out" \
+        "$(basename "$main")" 2>&1 | tail -2 ) || true
+  fi
+fi
 
 dest="$here/assets/bundle"
 mkdir -p "$dest"

@@ -1,0 +1,87 @@
+% Dokumen "serba ada": memakai paket yang paling sering dipakai paper, supaya
+% semuanya ikut ke dalam cache yang dibundel. Tidak untuk dibaca siapa pun.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[bahasa,english]{babel}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,float,wrapfig}
+\usepackage{booktabs,tabularx,longtable,multirow,array,colortbl}
+\usepackage{siunitx}
+\usepackage{caption,subcaption}
+\usepackage{enumitem}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc,fit,backgrounds,patterns}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{natbib}
+\usepackage{csquotes}
+
+\title{Serba Ada}
+\author{Pengumpul Paket}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Matematika}
+\begin{equation}
+  E = mc^2, \qquad \int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}.
+\end{equation}
+\begin{align}
+  a &= b + c \\
+  d &\le \sum_{i=1}^{n} x_i
+\end{align}
+
+\section{Tabel}
+\begin{table}[H]
+  \centering
+  \caption{Contoh}
+  \begin{tabular}{lrr}
+    \toprule
+    Metode & \si{\percent} & Waktu (\si{\second}) \\
+    \midrule
+    Dasar & 91 & 12 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Gambar}
+\begin{tikzpicture}
+  \node[draw,rounded corners] (a) {Mulai};
+  \node[draw,right=of a] (b) {Selesai};
+  \draw[-Stealth] (a) -- (b);
+\end{tikzpicture}
+
+\begin{tikzpicture}
+  \begin{axis}[width=6cm,height=4cm]
+    \addplot coordinates {(0,0) (1,1) (2,4)};
+  \end{axis}
+\end{tikzpicture}
+
+\section{Algoritma}
+\begin{algorithm}
+\caption{Contoh}
+\begin{algorithmic}
+\State $x \gets 0$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Kode}
+\begin{lstlisting}[language=Python]
+def halo():
+    return "dunia"
+\end{lstlisting}
+
+\end{document}
