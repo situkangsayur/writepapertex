@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 
@@ -946,7 +946,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Widget build(BuildContext context) {
     final layout = LayoutSize.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final errors = _result?.errors ?? const <LatexMessage>[];
+    final messages = _result?.messages ?? const <LatexMessage>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -1144,7 +1144,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           if (_compiling && _progress.isNotEmpty) _progressBar(scheme),
           if (_engineReady == false) _noEngineBar(scheme),
           if (_dangling.isNotEmpty) _danglingBar(scheme),
-          if (errors.isNotEmpty) _errorBar(errors, scheme),
+          if (messages.isNotEmpty) _messageBar(messages, scheme),
           Expanded(
             child: Row(
               children: <Widget>[
@@ -1307,25 +1307,97 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return '${d.inMinutes} mnt ${d.inSeconds % 60} dtk';
   }
 
-  Widget _errorBar(List<LatexMessage> errors, ColorScheme scheme) => Material(
-    color: scheme.errorContainer,
-    child: SizedBox(
-      // Pesan Tectonic bisa beberapa baris; 64 piksel hanya memperlihatkan
-      // barisnya yang pertama dan menyembunyikan sebabnya.
-      height: 110,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        itemCount: errors.length,
-        itemBuilder: (context, i) {
-          final e = errors[i];
-          return Text(
-            '${e.line == null ? '' : 'baris ${e.line}: '}${e.text}',
-            style: TextStyle(color: scheme.onErrorContainer, fontSize: 12.5),
-          );
-        },
+  static String _messageLine(LatexMessage m) =>
+      '${m.line == null ? '' : 'baris ${m.line}: '}${m.text}';
+
+  /// Pesan dari kompilasi terakhir: galat kalau ada, kalau tidak peringatan.
+  ///
+  /// Dua hal yang dulu salah di sini. Pertama, warnanya: `Underfull \hbox`
+  /// adalah keluhan penataan huruf — barisnya terlalu longgar — dan dokumennya
+  /// tetap terbit, tetapi ia ditulis dalam bentuk yang sama dengan galat
+  /// sungguhan sehingga layar memerah oleh ratusan baris yang tidak perlu
+  /// ditindaklanjuti. Sekarang merah disediakan untuk yang benar-benar
+  /// menggagalkan kompilasi. Kedua, teksnya tidak bisa disalin sama sekali,
+  /// jadi satu-satunya cara memindahkannya adalah mengetik ulang.
+  Widget _messageBar(List<LatexMessage> all, ColorScheme scheme) {
+    final errors = all
+        .where((m) => m.severity == LatexSeverity.error)
+        .toList(growable: false);
+    final shown = errors.isNotEmpty
+        ? errors
+        : all.where((m) => m.severity == LatexSeverity.warning).toList(growable: false);
+    if (shown.isEmpty) return const SizedBox.shrink();
+
+    final bad = errors.isNotEmpty;
+    final background = bad ? scheme.errorContainer : scheme.surfaceContainerHighest;
+    final foreground = bad ? scheme.onErrorContainer : scheme.onSurfaceVariant;
+    final text = shown.map(_messageLine).join('\n');
+
+    return Material(
+      color: background,
+      child: SizedBox(
+        // Pesan Tectonic bisa beberapa baris; 64 piksel hanya memperlihatkan
+        // barisnya yang pertama dan menyembunyikan sebabnya.
+        height: 124,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(left: 12, top: 2, right: 4),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    bad ? Icons.error_outline : Icons.info_outline,
+                    size: 16,
+                    color: foreground,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      bad
+                          ? '${shown.length} galat'
+                          : '${shown.length} peringatan — PDF-nya tetap terbit',
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Salin semua pesan',
+                    iconSize: 18,
+                    visualDensity: VisualDensity.compact,
+                    color: foreground,
+                    icon: const Icon(Icons.copy_all_outlined),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: text));
+                      _say('${shown.length} pesan disalin');
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                // Bisa diseret dan disalin sebagian: kadang yang dibutuhkan
+                // hanya satu nomor baris, bukan seluruh daftarnya.
+                child: SelectableText(
+                  text,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 12.5,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _fileTree() => Column(
     children: <Widget>[

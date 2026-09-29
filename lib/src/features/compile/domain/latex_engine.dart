@@ -127,6 +127,19 @@ class LatexLogParser {
   /// `! LaTeX Error: File `foo.sty' not found.` — no line number here.
   static final RegExp _bang = RegExp(r'^!\s*(.*)$');
 
+  /// Pesan yang ditulis dengan bentuk galat, padahal bukan galat.
+  ///
+  /// `Underfull \hbox (badness 10000)` adalah keluhan penataan huruf: satu
+  /// baris yang terlalu longgar. Dokumen tetap terbentuk, PDF-nya tetap
+  /// terbit. Tetapi dengan `-file-line-error` TeX menulisnya dalam bentuk
+  /// `berkas.tex:122: …`, bentuk yang sama persis dengan galat sungguhan —
+  /// jadi sebuah disertasi yang sehat bisa memerahkan layar dengan ratusan
+  /// baris, dan galat yang sebenarnya tenggelam di antaranya.
+  static final RegExp _notReallyAnError = RegExp(
+    r'^(Under|Over)full\s+\\[hv]box|^(LaTeX|Package|Class)\b.*\bWarning:',
+    caseSensitive: false,
+  );
+
   /// `LaTeX Warning: Reference `fig:1' on page 1 undefined on input line 42.`
   static final RegExp _warning = RegExp(r'^(?:LaTeX|Package|Class)\s+(?:\w+\s+)?Warning:\s*(.*)$');
   static final RegExp _warningLine = RegExp(r'input line (\d+)');
@@ -153,7 +166,9 @@ class LatexLogParser {
         if (text.isNotEmpty) {
           add(
             LatexMessage(
-              severity: LatexSeverity.error,
+              severity: _notReallyAnError.hasMatch(text)
+                  ? LatexSeverity.warning
+                  : LatexSeverity.error,
               text: text,
               file: fileLine.group(1),
               line: int.tryParse(fileLine.group(2)!),

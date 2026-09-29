@@ -265,3 +265,22 @@ Tidak ada yang diubah di sisi Rust. Sempat dicurigai bundel Tectonic menyentuh
 jaringan tiap kali dijalankan — kalau benar, `only_cached` akan menghematnya —
 tetapi cap waktunya menunjukkan seluruh penyiapan sesi selesai dalam 0,6 detik.
 Mengubah yang sudah cepat hanya menambah risiko.
+
+### Merah hanya untuk yang menggagalkan kompilasi (2026-09-29)
+
+`Underfull \hbox (badness 10000)` adalah keluhan penataan huruf: satu baris
+yang terlalu longgar. Dokumennya tetap terbentuk dan PDF-nya tetap terbit.
+Tetapi dengan `-file-line-error` TeX menulisnya sebagai `berkas.tex:122: …` —
+bentuk yang sama persis dengan galat sungguhan — jadi pengurai log
+menganggapnya galat, dan sebuah disertasi yang sehat memerahkan layar dengan
+ratusan baris yang tidak perlu ditindaklanjuti. Galat yang sebenarnya
+tenggelam di antaranya.
+
+Sekarang `Underfull`/`Overfull \hbox` dan `\vbox`, serta peringatan LaTeX yang
+kebetulan ditulis dalam bentuk berkas:baris, digolongkan sebagai peringatan.
+Bilah pesannya merah hanya ketika ada galat sungguhan; kalau tidak ia netral
+dan menyebutkan "PDF-nya tetap terbit".
+
+Pesannya juga bisa **disalin** sekarang — `SelectableText` ditambah tombol
+"Salin semua pesan". Sebelumnya satu-satunya cara memindahkan sebuah pesan
+galat adalah mengetiknya ulang dari layar.
