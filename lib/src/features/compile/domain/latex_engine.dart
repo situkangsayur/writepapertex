@@ -12,6 +12,7 @@ class CompileResult {
     required this.messages,
     this.pdfPath,
     this.duration = Duration.zero,
+    this.needsFullPass = false,
   });
 
   final bool ok;
@@ -26,6 +27,15 @@ class CompileResult {
 
   final String? pdfPath;
   final Duration duration;
+
+  /// Lintasan cepat berhasil, tetapi log-nya minta dijalankan lagi.
+  ///
+  /// Inilah yang membedakan "cukup" dari "belum": nomor rujukan yang masih
+  /// `??`, daftar pustaka yang belum terbentuk, daftar isi yang belum
+  /// memuat bab baru. Ditandai, bukan dijalankan sendiri — lintasan penuh
+  /// memakan enam kali lebih lama, dan yang sedang menulis satu paragraf
+  /// belum tentu memerlukannya sekarang.
+  final bool needsFullPass;
 
   List<LatexMessage> get errors =>
       messages.where((m) => m.severity == LatexSeverity.error).toList(growable: false);
@@ -86,6 +96,20 @@ abstract class LatexEngine {
     void Function(String line)? onOutput,
   });
 }
+
+/// Tanda di dalam log bahwa satu lintasan saja belum cukup.
+///
+/// TeX menulisnya sendiri: ia tahu rujukan mana yang belum mantap, karena
+/// nomornya baru diketahui setelah seluruh dokumen dibaca sekali.
+final RegExp rerunMarkers = RegExp(
+  r'Rerun to get|Rerun LaTeX|Citation .* undefined|Reference .* undefined|'
+  r'There were undefined (references|citations)|Please \(re\)run Biber|'
+  r'No file .*\.bbl',
+  caseSensitive: false,
+);
+
+/// True kalau [log] menyebut bahwa dokumennya perlu dijalankan lagi.
+bool logAsksForRerun(String log) => rerunMarkers.hasMatch(log);
 
 /// Reads LaTeX's log format into something that can be shown next to the code.
 ///

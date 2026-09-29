@@ -96,6 +96,18 @@ class TectonicEngine implements LatexEngine {
     void Function(String line)? onOutput,
   }) async {
     final started = DateTime.now();
+
+    // Tiap langkah dicap waktunya. Pertanyaan "kenapa satu setengah menit?"
+    // tidak bisa dijawab oleh bilah kemajuan yang hanya berkata "Menjalankan
+    // Tectonic"; yang menjawabnya adalah melihat langkah mana yang memakan
+    // menitnya — menyiapkan bundel, atau LaTeX-nya sendiri.
+    final timeline = <String>[];
+    void say(String text) {
+      final line = '[${_elapsed(DateTime.now().difference(started))}] $text';
+      timeline.add(line);
+      onOutput?.call(line);
+    }
+
     final buildDir = await ensureBuildDir(projectDir);
     final outPath = p.join(buildDir, '${p.basenameWithoutExtension(mainFile)}.pdf');
 
@@ -112,12 +124,12 @@ class TectonicEngine implements LatexEngine {
     // berganti isi, dan tidak menuntut membaca 15 MB hanya untuk memutuskan.
     final marker = '${(await rootBundle.load(_bundleAsset)).lengthInBytes}';
     if (await _needsUnpacking(cache, marker)) {
-      onOutput?.call('Menyiapkan paket TeX (sekali saja)…\n');
+      say('Menyiapkan paket TeX (sekali saja)…');
       final added = await _unpackBundle(cache, marker);
-      onOutput?.call('$added paket disiapkan.\n');
+      say('$added paket disiapkan.');
     }
 
-    onOutput?.call('Menjalankan Tectonic…\n');
+    say('Menjalankan Tectonic…');
 
     // Mesinnya menulis kemajuannya ke berkas ini; dibaca sambil menunggu.
     // Tanpa itu satu-satunya yang terlihat selama beberapa menit adalah
@@ -134,7 +146,7 @@ class TectonicEngine implements LatexEngine {
       try {
         final lines = progressFile.readAsLinesSync();
         for (var i = shown; i < lines.length; i++) {
-          if (lines[i].trim().isNotEmpty) onOutput(lines[i]);
+          if (lines[i].trim().isNotEmpty) say(lines[i].trim());
         }
         if (lines.length != shown) lastActivity = DateTime.now();
         shown = lines.length;
@@ -156,6 +168,7 @@ class TectonicEngine implements LatexEngine {
     final (:code, :message) = outcome;
 
     final ok = code == 0 && File(outPath).existsSync();
+    say(ok ? 'Selesai.' : 'Berhenti dengan galat.');
 
     // Log LaTeX yang sebenarnya — dengan nomor baris dan nama berkasnya —
     // hanya ada kalau mesinnya sempat menulisnya. Itu yang paling berguna
@@ -163,8 +176,12 @@ class TectonicEngine implements LatexEngine {
     // failed".
     final texLog = File(p.join(buildDir, '${p.basenameWithoutExtension(mainFile)}.log'));
     final logText = texLog.existsSync() ? await texLog.readAsString() : '';
-    final log = ok ? 'Selesai.' : <String>[message, logText].where((t) => t.isNotEmpty).join('\n');
-    onOutput?.call('$log\n');
+    // Saat berhasil, log-nya adalah catatan waktunya: itu yang berguna
+    // dilihat berikutnya. Saat gagal, yang berguna adalah pesan galatnya.
+    final log = ok
+        ? timeline.join('\n')
+        : <String>[...timeline, message, logText].where((t) => t.isNotEmpty).join('\n');
+    if (!ok) onOutput?.call('$message\n');
 
     // Pesan Tectonic tidak berbentuk log LaTeX, jadi pengurai biasa sering
     // tidak menemukan apa pun di dalamnya. Kalau itu terjadi sementara
@@ -185,8 +202,15 @@ class TectonicEngine implements LatexEngine {
       messages: messages,
       pdfPath: ok ? outPath : null,
       duration: DateTime.now().difference(started),
+      // Hanya lintasan cepat yang bisa "kurang": lintasan penuh sudah
+      // mengulang sampai TeX berhenti meminta.
+      needsFullPass: ok && pass == CompilePass.quick && logAsksForRerun(logText),
     );
   }
+
+  /// Detik dengan satu angka di belakang koma, untuk cap waktu langkah.
+  static String _elapsed(Duration d) =>
+      '${(d.inMilliseconds / 1000).toStringAsFixed(1).replaceAll('.', ',')} s';
 
   /// Nama berkas penanda bahwa bundel sudah dibongkar seluruhnya.
   ///

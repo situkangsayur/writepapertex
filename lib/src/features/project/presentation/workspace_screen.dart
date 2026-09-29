@@ -10,6 +10,7 @@ import '../../../core/utils/layout_size.dart';
 import '../../compile/data/latexmk_engine.dart';
 import '../../compile/data/tectonic_engine.dart';
 import '../../compile/domain/latex_engine.dart';
+import '../../compile/domain/source_stamp.dart';
 import '../../editor/data/cwl_repository.dart';
 import '../../editor/domain/autocomplete.dart';
 import '../../editor/domain/latex_syntax.dart';
@@ -133,10 +134,21 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// page one — which is what makes an iterative document unbearable.
   int _pdfPage = 1;
 
+  /// PDF yang sudah ada di proyek saat dibuka, sebelum kompilasi apa pun.
+  ///
+  /// Sebuah proyek yang baru di-clone membawa PDF-nya sendiri, dan yang ingin
+  /// dilakukan orang pertama kali biasanya membacanya — bukan menunggu satu
+  /// setengah menit untuk mendapatkan berkas yang sudah ada di folder.
+  String? _openedPdf;
+
   @override
   void initState() {
     super.initState();
     _project = _withChosenMain(widget.project, widget.profile);
+    _openedPdf = SourceStamp.existingPdf(
+      projectDir: _project.directory,
+      mainFile: _project.mainFile,
+    );
     _editor.addListener(_onEdited);
     _openRelative(_project.mainFile);
     _checkEngine();
@@ -167,6 +179,33 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     setState(() => _pass = pass);
     await widget.store.saveCompilePass(pass.name);
     _say('Kompilasi ${pass.label.toLowerCase()}: ${pass.hint}');
+  }
+
+  /// Memperlihatkan cap waktu tiap langkah kompilasi terakhir.
+  ///
+  /// "Kompilasinya lama" adalah keluhan yang tidak bisa ditindaklanjuti sampai
+  /// terlihat langkah mana yang lama — menyiapkan bundel, memuat format, atau
+  /// LaTeX-nya sendiri. Ketiganya punya jalan keluar yang berbeda.
+  Future<void> _showTimeline() async {
+    final log = _result?.log ?? '';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Waktu kompilasi terakhir'),
+        content: SizedBox(
+          width: 520,
+          child: log.trim().isEmpty
+              ? const Text('Belum ada kompilasi di sesi ini.')
+              : SingleChildScrollView(
+                  child: SelectableText(log, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                ),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tutup')),
+        ],
+      ),
+    );
   }
 
   /// Memperlihatkan berapa paket yang sudah tersimpan.
@@ -285,6 +324,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           // Hasil kompilasi proyek sebelumnya tidak berlaku di sini, dan
           // memperlihatkannya sebagai pratinjau proyek baru akan menyesatkan.
           _result = null;
+          _openedPdf = SourceStamp.existingPdf(
+            projectDir: project.directory,
+            mainFile: project.mainFile,
+          );
           _dangling = const <DanglingReference>[];
           _pdfPage = 1;
           _token = null;
@@ -476,6 +519,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       _project = _project.copyWith(mainFile: relative);
       // Hasil lama milik berkas utama sebelumnya, jadi tidak lagi berlaku.
       _result = null;
+      _openedPdf = SourceStamp.existingPdf(
+        projectDir: _project.directory,
+        mainFile: relative,
+      );
     });
     _say('$relative jadi berkas utama');
   }
@@ -652,6 +699,28 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _say(uri == null ? 'Tidak jadi diekspor' : 'Proyek diekspor (${archive.length} berkas)');
   }
 
+  /// Menawarkan lintasan penuh saat log-nya memintanya.
+  ///
+  /// Tidak dijalankan sendiri: lintasan penuh enam kali lebih lama — satu
+  /// menit berbanding sepuluh detik pada dokumen sebesar disertasi — dan yang
+  /// baru mengubah satu paragraf biasanya tidak sedang menunggu nomor
+  /// rujukannya. Yang pantas adalah memberi tahu, lalu membiarkan memilih.
+  void _offerFullPass() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: const Text('Rujukan atau daftar pustakanya belum mantap.'),
+          action: SnackBarAction(
+            label: 'Jalankan lengkap',
+            onPressed: () => _compile(pass: CompilePass.full, force: true),
+          ),
+        ),
+      );
+  }
+
   void _say(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -759,9 +828,39 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _say('Kompilasi ditinggalkan. Mesinnya masih menyelesaikan di latar.');
   }
 
-  Future<void> _compile({CompilePass? pass}) async {
+  /// [force] melewati pemeriksaan sidik sumber dan benar-benar menjalankan
+  /// mesinnya. Dipakai saat hasilnya dicurigai, bukan saat menulis.
+  Future<void> _compile({CompilePass? pass, bool force = false}) async {
     if (_compiling) return;
     await _save();
+    final wanted = pass ?? _pass;
+
+    // Tidak ada yang berubah sejak kompilasi terakhir berarti PDF di folder
+    // sudah jawaban yang benar. Menjalankan mesinnya lagi akan menghasilkan
+    // berkas yang identik setelah satu setengah menit.
+    if (!force) {
+      final ready = SourceStamp.reusablePdf(
+        projectDir: _project.directory,
+        mainFile: _project.mainFile,
+        pass: wanted,
+      );
+      if (ready != null) {
+        if (_result?.pdfPath != ready) {
+          setState(() {
+            _openedPdf = ready;
+            _result = CompileResult(
+              ok: true,
+              log: 'Tidak ada yang berubah sejak kompilasi terakhir.',
+              messages: const <LatexMessage>[],
+              pdfPath: ready,
+            );
+          });
+        }
+        _say('Tidak ada yang berubah — PDF terakhir dipakai lagi.');
+        return;
+      }
+    }
+
     final run = ++_compileRun;
     setState(() {
       _compiling = true;
@@ -778,7 +877,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       final result = await _engine.compile(
         projectDir: _project.directory,
         mainFile: _project.mainFile,
-        pass: pass ?? _pass,
+        pass: wanted,
         onOutput: (line) {
           final text = line.trim();
           if (text.isNotEmpty && mounted && run == _compileRun) {
@@ -787,8 +886,21 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         },
       );
       if (!mounted || run != _compileRun) return;
-      setState(() => _result = result);
-      if (result.ok) await _publishPdf(result);
+      setState(() {
+        _result = result;
+        if (result.ok) _openedPdf = result.pdfPath;
+      });
+      if (result.ok && result.needsFullPass) _offerFullPass();
+      if (result.ok) {
+        await _publishPdf(result);
+        // Dicatat setelah PDF-nya terbit: yang dicatat adalah keadaan sumber
+        // yang benar-benar menghasilkan berkas ini.
+        SourceStamp.remember(
+          projectDir: _project.directory,
+          mainFile: _project.mainFile,
+          pass: wanted,
+        );
+      }
       // Reopening the PDF resets the view, so the page is restored.
       if (result.ok && _pdfPage > 1) {
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -962,6 +1074,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               'cepat' => _setPass(CompilePass.quick),
               'lengkap' => _setPass(CompilePass.full),
               'paket' => _showCacheInfo(),
+              'paksa' => _compile(force: true),
+              'waktu' => _showTimeline(),
               _ => _fetchDependencies(),
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
@@ -979,6 +1093,26 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   ),
                 ),
               const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'waktu',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.timer_outlined),
+                  title: Text('Rincian waktu kompilasi'),
+                  subtitle: Text('langkah mana yang memakan waktu'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'paksa',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.refresh),
+                  title: Text('Paksa kompilasi ulang'),
+                  subtitle: Text('walau sumbernya tidak berubah'),
+                ),
+              ),
               const PopupMenuItem<String>(
                 value: 'unduh',
                 child: ListTile(
@@ -1272,7 +1406,9 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   }
 
   Widget _preview(ColorScheme scheme) {
-    final pdfPath = _result?.pdfPath;
+    // Hasil kompilasi terakhir kalau ada; kalau belum ada, PDF yang sudah
+    // berada di proyek sejak dibuka.
+    final pdfPath = _result?.pdfPath ?? _openedPdf;
     if (pdfPath == null) {
       return Center(
         child: Padding(
@@ -1294,7 +1430,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       controller: _pdf,
       // The file is rewritten in place on every compile, so the viewer has to
       // be told to reload rather than keep the pages it already has.
-      key: ValueKey<String>('$pdfPath-${_result!.duration.inMicroseconds}'),
+      key: ValueKey<String>('$pdfPath-${_result?.duration.inMicroseconds ?? 0}'),
       params: PdfViewerParams(
         backgroundColor: scheme.surfaceContainerHighest,
         margin: 8,

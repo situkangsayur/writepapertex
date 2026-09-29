@@ -212,3 +212,56 @@ git lokal seperti Gitea".
 Kalau smart HTTP ternyata terlalu berat, cadangannya adalah memakai `dart_git`
 atau pustaka sejenis bila sudah cukup matang — **perlu dicek saat tahapnya
 tiba**, jangan diandalkan sekarang.
+
+---
+
+## KT-7 — Lintasan cepat sebagai bawaan, dan kompilasi yang tidak perlu terjadi
+
+*Diputuskan 2026-09-29, setelah diukur di tablet.*
+
+Keluhannya jelas: "1 menit 30 detik, lama banget, di komputer TeXstudio cepet
+banget". Yang kurang jelas adalah **apanya** yang lama. Jadi tiap langkah
+diberi cap waktu (menu Kompilasi → *Rincian waktu kompilasi*) dan diukur pada
+proposal disertasi sungguhan — 8 folder, 31 gambar, `bab/`, `lampiran/`,
+`pustaka/` — di Moto Pad 60 Neo:
+
+| Lintasan | Waktu |
+|---|---|
+| **Cepat** (satu lintasan TeX) | **9,8 detik** |
+| **Lengkap** (BibTeX + TeX diulang sampai mantap) | **1 menit 1 detik** |
+
+Rinciannya: 0,6 detik menyiapkan sesi dan membuka bundel — jadi bukan
+jaringan, bukan memuat pustaka, dan bukan format TeX. Sisanya XeTeX membaca
+dokumennya, ditambah sekitar satu detik yang habis memindai `/system/fonts`
+milik Android.
+
+Artinya satu setengah menit itu **lintasan penuh**, dan enam per tujuh
+waktunya adalah pengulangan yang hanya dibutuhkan ketika nomor rujukan dan
+daftar pustakanya sedang dilihat. Tiga keputusan mengikuti:
+
+1. **Bawaannya lintasan cepat.** Sepuluh detik untuk melihat satu paragraf
+   yang baru diubah adalah harga yang masuk akal di tablet; satu menit bukan.
+2. **Lintasan penuh ditawarkan, bukan dijalankan sendiri.** Kalau log TeX
+   sendiri yang meminta — `Rerun to get cross-references right`,
+   `Citation … undefined`, `No file …bbl` — barulah muncul tawaran
+   "Jalankan lengkap". Menjalankannya otomatis akan mengembalikan satu menit
+   itu ke setiap kali orang menekan Kompilasi.
+3. **Sumber yang tidak berubah tidak dikompilasi lagi.** TeX tidak mengenal
+   kompilasi bertahap, jadi yang bisa dihemat bukan kompilasinya melainkan
+   kompilasi yang memang tidak perlu terjadi. Sidik jari murah — nama, ukuran,
+   dan waktu ubah tiap berkas sumber — disimpan di
+   `.writepapertex/build/sidik-sumber.txt`; kalau ia cocok dan PDF-nya masih
+   ada, PDF itu yang dipakai. *Paksa kompilasi ulang* ada di menu yang sama
+   untuk saat hasilnya dicurigai.
+
+Sejalan dengan itu, **PDF yang sudah ada langsung ditampilkan saat proyek
+dibuka**. Repositori yang baru di-clone sudah membawa PDF-nya (lihat KT-4:
+PDF sengaja tidak diabaikan git), dan memaksa menunggu satu kompilasi sebelum
+boleh membacanya adalah cara tercepat membuat orang menutup aplikasi.
+
+### Yang tidak dilakukan
+
+Tidak ada yang diubah di sisi Rust. Sempat dicurigai bundel Tectonic menyentuh
+jaringan tiap kali dijalankan — kalau benar, `only_cached` akan menghematnya —
+tetapi cap waktunya menunjukkan seluruh penyiapan sesi selesai dalam 0,6 detik.
+Mengubah yang sudah cepat hanya menambah risiko.
