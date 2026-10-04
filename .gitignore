@@ -18,4 +18,8 @@ android/app/src/main/jniLibs/
 
 # Cache Tectonic yang sudah terisi: 10 MB, dibangun oleh
 # scripts/build-tectonic-bundle.sh, bukan disimpan di riwayat.
-assets/bundle/
+# Hanya isinya yang diabaikan, bukan foldernya: pubspec.yaml mendaftarkan
+# folder ini sebagai aset, dan tanpa folder itu analyze di CI gagal dengan
+# "asset directory doesn't exist" — padahal CI memang tidak membangun bundel.
+assets/bundle/*
+!assets/bundle/.gitkeep
