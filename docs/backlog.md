@@ -305,8 +305,18 @@ Diukur langsung di tablet dengan mesin yang sama persis, dipanggil dari
       checking if proposal.bbl changed") dan berhenti hanya di batas enam
       ulangan. Ditambal di `scripts/build-tectonic-android.sh`: keadaan tanpa
       sidik jari dianggap tidak berubah. 57 detik menjadi 26 detik
-- [ ] Fontconfig memindai `/system/fonts` di setiap lintasan tanpa cache yang
-      bisa ditulisi (±1 detik per lintasan)
+- [x] **Pencarian font yang tidak ada membuka seluruh font sistem**
+      (2026-10-04). `\IfFontExistsTF{Times New Roman}` di gaya ITB membuat
+      XeTeX membuka satu per satu semua font di `/system/fonts` untuk membaca
+      namanya — empat detik di setiap lintasan, separuh lintasan TeX. Cache
+      fontconfig tidak menolong. Fontconfig kini diarahkan ke folder font
+      milik aplikasi. Lintasan cepat 11 → 6,9 detik, lengkap 26 → 14 detik
+- [x] **Pesan kompilasi menyebut berkasnya, bisa diketuk, dan peringatan
+      dilipat** (2026-10-04). Dulu yang tampil hanya "baris 142" — awalan cap
+      waktu dan "peringatan:" tertelan ke nama berkas — padahal proyeknya punya
+      belasan bab. Sekarang `bab/02-tinjauan-pustaka.tex:142 — …`, ketuk untuk
+      membuka berkasnya di baris itu, dan puluhan `Underfull` dilipat jadi satu
+      baris karena PDF-nya tetap terbit
 
 ## Lintas fase
 

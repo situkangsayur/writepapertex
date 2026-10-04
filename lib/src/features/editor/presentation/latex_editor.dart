@@ -12,8 +12,13 @@ class LatexEditor extends StatefulWidget {
     required this.autocomplete,
     this.onSave,
     this.showKeyRow = false,
+    this.focusNode,
     super.key,
   });
+
+  /// Fokus penyuntingnya, kalau pemanggil perlu memindahkan kursor ke sebuah
+  /// baris — mengetuk pesan kompilasi, misalnya — dan membuatnya terlihat.
+  final FocusNode? focusNode;
 
   final TextEditingController controller;
   final LatexAutocomplete autocomplete;
@@ -27,7 +32,8 @@ class LatexEditor extends StatefulWidget {
 }
 
 class _LatexEditorState extends State<LatexEditor> {
-  final FocusNode _focus = FocusNode();
+  late final FocusNode _ownFocus = FocusNode();
+  FocusNode get _focus => widget.focusNode ?? _ownFocus;
   final ScrollController _scroll = ScrollController();
   List<Completion> _suggestions = const <Completion>[];
   CompletionRequest? _request;
@@ -41,7 +47,7 @@ class _LatexEditorState extends State<LatexEditor> {
   @override
   void dispose() {
     widget.controller.removeListener(_refreshSuggestions);
-    _focus.dispose();
+    _ownFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }

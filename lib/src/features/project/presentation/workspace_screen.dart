@@ -54,6 +54,14 @@ class WorkspaceScreen extends StatefulWidget {
 
 class _WorkspaceScreenState extends State<WorkspaceScreen> {
   final LatexHighlightingController _editor = LatexHighlightingController();
+
+  /// Fokus penyunting, supaya mengetuk pesan kompilasi bisa membawa kursor ke
+  /// barisnya dan membuatnya terlihat.
+  final FocusNode _editorFocus = FocusNode();
+
+  /// Daftar peringatan dibuka. Bawaannya terlipat: peringatan penataan huruf
+  /// tidak menggagalkan apa pun, dan sebuah disertasi bisa punya puluhan.
+  bool _warningsOpen = false;
   final PdfViewerController _pdf = PdfViewerController();
 
   /// Tectonic di Android karena tidak ada TeX Live di sana; latexmk di
@@ -566,6 +574,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _autoTimer?.cancel();
     _editor.removeListener(_onEdited);
     _editor.dispose();
+    _editorFocus.dispose();
     super.dispose();
   }
 
@@ -1156,6 +1165,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   Expanded(
                     child: LatexEditor(
                       controller: _editor,
+                      focusNode: _editorFocus,
                       autocomplete: _autocomplete,
                       showKeyRow: isTouchPlatform,
                       onSave: _save,
@@ -1172,6 +1182,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                               width: editorWidth,
                               child: LatexEditor(
                                 controller: _editor,
+                                focusNode: _editorFocus,
                                 autocomplete: _autocomplete,
                                 showKeyRow: isTouchPlatform,
                                 onSave: _save,
@@ -1307,18 +1318,65 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     return '${d.inMinutes} mnt ${d.inSeconds % 60} dtk';
   }
 
-  static String _messageLine(LatexMessage m) =>
-      '${m.line == null ? '' : 'baris ${m.line}: '}${m.text}';
+  /// Berkas proyek yang dimaksud sebuah pesan.
+  ///
+  /// Tectonic menulis nama berkas tanpa `.tex` (`bab/02-tinjauan-pustaka`),
+  /// latexmk dengan `./` di depannya; keduanya harus menunjuk ke berkas yang
+  /// sama di pohon proyek.
+  String? _messageFile(LatexMessage m) {
+    final raw = m.file;
+    if (raw == null) return null;
+    final name = raw.startsWith('./') ? raw.substring(2) : raw;
+    final files = _project.files;
+    if (files.contains(name)) return name;
+    if (files.contains('$name.tex')) return '$name.tex';
+    return null;
+  }
+
+  String _messageLine(LatexMessage m) {
+    final file = _messageFile(m) ?? m.file;
+    final where = <String>[
+      ?file,
+      if (m.line != null) '${m.line}',
+    ].join(':');
+    return where.isEmpty ? m.text : '$where — ${m.text}';
+  }
+
+  /// Membuka berkas sebuah pesan dan menaruh kursor di barisnya.
+  Future<void> _jumpToMessage(LatexMessage m) async {
+    final line = m.line;
+    if (line == null) return;
+    final file = _messageFile(m) ?? (m.file == null ? _openFile : null);
+    if (file == null) {
+      _say('Berkas ${m.file} tidak ada di proyek ini.');
+      return;
+    }
+    if (file != _openFile) await _openRelative(file);
+    if (!mounted) return;
+    final text = _editor.text;
+    var offset = 0;
+    for (var i = 1; i < line; i++) {
+      final next = text.indexOf('\n', offset);
+      if (next < 0) break;
+      offset = next + 1;
+    }
+    // Fokus dulu, baru kursornya: penyunting hanya menggulir ke kursor yang
+    // berpindah selagi ia memegang fokus.
+    _editorFocus.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _editor.selection = TextSelection.collapsed(offset: offset.clamp(0, _editor.text.length));
+    });
+  }
 
   /// Pesan dari kompilasi terakhir: galat kalau ada, kalau tidak peringatan.
   ///
-  /// Dua hal yang dulu salah di sini. Pertama, warnanya: `Underfull \hbox`
-  /// adalah keluhan penataan huruf — barisnya terlalu longgar — dan dokumennya
-  /// tetap terbit, tetapi ia ditulis dalam bentuk yang sama dengan galat
-  /// sungguhan sehingga layar memerah oleh ratusan baris yang tidak perlu
-  /// ditindaklanjuti. Sekarang merah disediakan untuk yang benar-benar
-  /// menggagalkan kompilasi. Kedua, teksnya tidak bisa disalin sama sekali,
-  /// jadi satu-satunya cara memindahkannya adalah mengetik ulang.
+  /// Merah hanya untuk yang benar-benar menggagalkan kompilasi. Peringatan —
+  /// kebanyakan `Underfull \hbox`, baris yang terlalu longgar — dilipat jadi
+  /// satu baris: PDF-nya tetap terbit, dan daftar puluhan baris yang selalu
+  /// terbuka hanya mendesak penyunting. Setiap pesan menyebut berkas dan
+  /// barisnya, dan bisa diketuk untuk langsung ke sana: "baris 40" saja tidak
+  /// berarti apa-apa di proyek yang punya belasan berkas bab.
   Widget _messageBar(List<LatexMessage> all, ColorScheme scheme) {
     final errors = all
         .where((m) => m.severity == LatexSeverity.error)
@@ -1327,75 +1385,86 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
         ? errors
         : all.where((m) => m.severity == LatexSeverity.warning).toList(growable: false);
     if (shown.isEmpty) return const SizedBox.shrink();
-
     final bad = errors.isNotEmpty;
+    final open = bad || _warningsOpen;
     final background = bad ? scheme.errorContainer : scheme.surfaceContainerHighest;
     final foreground = bad ? scheme.onErrorContainer : scheme.onSurfaceVariant;
     final text = shown.map(_messageLine).join('\n');
 
+    final header = Padding(
+      padding: const EdgeInsets.only(left: 12, top: 2, right: 4),
+      child: Row(
+        children: <Widget>[
+          Icon(bad ? Icons.error_outline : Icons.info_outline, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              bad ? '${shown.length} galat' : '${shown.length} peringatan — PDF-nya tetap terbit',
+              style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Salin semua pesan',
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            color: foreground,
+            icon: const Icon(Icons.copy_all_outlined),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              _say('${shown.length} pesan disalin');
+            },
+          ),
+          if (!bad)
+            IconButton(
+              tooltip: open ? 'Lipat peringatan' : 'Lihat peringatan',
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              color: foreground,
+              icon: Icon(open ? Icons.expand_more : Icons.expand_less),
+              onPressed: () => setState(() => _warningsOpen = !_warningsOpen),
+            ),
+        ],
+      ),
+    );
+
     return Material(
       color: background,
-      child: SizedBox(
-        // Pesan Tectonic bisa beberapa baris; 64 piksel hanya memperlihatkan
-        // barisnya yang pertama dan menyembunyikan sebabnya.
-        height: 124,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.only(left: 12, top: 2, right: 4),
-              child: Row(
+      child: open
+          ? SizedBox(
+              // Pesan Tectonic bisa beberapa baris; 64 piksel hanya
+              // memperlihatkan barisnya yang pertama dan menyembunyikan sebabnya.
+              height: 140,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Icon(
-                    bad ? Icons.error_outline : Icons.info_outline,
-                    size: 16,
-                    color: foreground,
-                  ),
-                  const SizedBox(width: 6),
+                  header,
                   Expanded(
-                    child: Text(
-                      bad
-                          ? '${shown.length} galat'
-                          : '${shown.length} peringatan — PDF-nya tetap terbit',
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      itemCount: shown.length,
+                      itemBuilder: (context, i) {
+                        final m = shown[i];
+                        return InkWell(
+                          onTap: m.line == null ? null : () => _jumpToMessage(m),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                            child: Text(
+                              _messageLine(m),
+                              style: TextStyle(
+                                color: foreground,
+                                fontSize: 12.5,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Salin semua pesan',
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                    color: foreground,
-                    icon: const Icon(Icons.copy_all_outlined),
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: text));
-                      _say('${shown.length} pesan disalin');
-                    },
                   ),
                 ],
               ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-                // Bisa diseret dan disalin sebagian: kadang yang dibutuhkan
-                // hanya satu nomor baris, bukan seluruh daftarnya.
-                child: SelectableText(
-                  text,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 12.5,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+            )
+          : header,
     );
   }
 

@@ -37,4 +37,22 @@ void main() {
     );
     expect(messages.single.severity, LatexSeverity.warning);
   });
+
+  test('nama berkas utuh walau pesannya datang dari laporan Tectonic', () {
+    // Baris kemajuan membawa cap waktu dan jenis laporan di depannya. Dulu
+    // keduanya tertelan ke nama berkas, dan yang tersisa di layar hanya
+    // "baris 142" — tanpa tahu di bab yang mana.
+    final messages = parser.parse(
+      '[7,9 s] peringatan: bab/02-tinjauan-pustaka:142: Underfull \\hbox (badness 10000) in paragraph at lines 141--142',
+    );
+    expect(messages.single.file, 'bab/02-tinjauan-pustaka');
+    expect(messages.single.line, 142);
+    expect(messages.single.severity, LatexSeverity.warning);
+  });
+
+  test('galat dengan awalan laporan tetap galat', () {
+    final messages = parser.parse('[3,1 s] galat: ! Undefined control sequence.');
+    expect(messages.single.severity, LatexSeverity.error);
+    expect(messages.single.text, 'Undefined control sequence.');
+  });
 }

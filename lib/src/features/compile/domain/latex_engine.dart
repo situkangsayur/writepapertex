@@ -144,6 +144,13 @@ class LatexLogParser {
   static final RegExp _warning = RegExp(r'^(?:LaTeX|Package|Class)\s+(?:\w+\s+)?Warning:\s*(.*)$');
   static final RegExp _warningLine = RegExp(r'input line (\d+)');
 
+  /// Awalan yang ditambahkan sebelum pesan TeX sampai ke sini: cap waktu
+  /// langkah (`[7,9 s] `) dan jenis laporan Tectonic (`peringatan: `,
+  /// `galat: `). Tanpa dibuang, keduanya tertelan ke dalam nama berkas —
+  /// `[7,9 s] peringatan: bab/02-tinjauan-pustaka` — sehingga yang tersisa di
+  /// layar hanya "baris 142", tanpa tahu di berkas mana dari belasan bab.
+  static final RegExp _prefix = RegExp(r'^(?:\[[\d.,]+\s*s\]\s*)?(?:(?:peringatan|galat|warning|error):\s+)?');
+
   /// Reads [log] into messages, without repeats.
   ///
   /// The same error usually appears twice: once in latexmk's own output and
@@ -157,7 +164,7 @@ class LatexLogParser {
     }
 
     for (final raw in const LineSplitter().convert(log)) {
-      final line = raw.trimRight();
+      final line = raw.trimRight().replaceFirst(_prefix, '');
       if (line.isEmpty) continue;
 
       final fileLine = _fileLine.firstMatch(line);

@@ -66,6 +66,7 @@ pub unsafe extern "C" fn wptex_compile(
         // itu, app_dirs2 menanya konteks Java dan panik di Android.
         std::env::set_var("TECTONIC_APP_DIR", cache);
         std::env::set_var("TECTONIC_CACHE_DIR", cache);
+        use_own_fonts(cache);
     }
 
     // Dijalankan dengan direktori kerja di sebelah berkasnya, supaya
@@ -297,4 +298,36 @@ pub unsafe extern "C" fn wptex_git_init(
     } else {
         1
     }
+}
+
+/// Fontconfig diarahkan ke folder font milik aplikasi, bukan `/system/fonts`.
+///
+/// Setiap kali dokumen menanyakan font lewat nama dan font itu tidak ada —
+/// gaya ITB menanyakan `\IfFontExistsTF{Times New Roman}`, yang memang tidak
+/// pernah ada di Android — XeTeX membuka satu per satu seluruh font sistem
+/// untuk membaca namanya. Diukur di tablet: empat detik di **setiap**
+/// lintasan, separuh dari seluruh lintasan TeX proposal disertasi. Cache
+/// fontconfig tidak menolong, karena XeTeX membaca namanya sendiri dari
+/// berkasnya.
+///
+/// Font sistem Android hampir tidak pernah yang dimaksud sebuah naskah
+/// LaTeX: yang dipakai adalah font dari bundel atau berkas `.otf` di proyek,
+/// keduanya dimuat lewat nama berkas dan tidak lewat fontconfig. Font lain
+/// bisa ditaruh di `<cache>/fonts`.
+fn use_own_fonts(cache: &str) {
+    let root = Path::new(cache);
+    let fonts = root.join("fonts");
+    let conf_dir = root.join("fontconfig");
+    let _ = std::fs::create_dir_all(&fonts);
+    let _ = std::fs::create_dir_all(conf_dir.join("cache"));
+    let conf = conf_dir.join("fonts.conf");
+    let body = format!(
+        "<?xml version=\"1.0\"?>\n<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n<fontconfig>\n  <dir>{}</dir>\n  <cachedir>{}</cachedir>\n</fontconfig>\n",
+        fonts.display(),
+        conf_dir.join("cache").display()
+    );
+    if std::fs::read_to_string(&conf).ok().as_deref() != Some(body.as_str()) {
+        let _ = std::fs::write(&conf, &body);
+    }
+    std::env::set_var("FONTCONFIG_FILE", &conf);
 }
