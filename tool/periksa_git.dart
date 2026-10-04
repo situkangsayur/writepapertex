@@ -56,9 +56,9 @@ Future<void> main() async {
     ], workingDirectory: target);
     periksa('cabang uji dibuat', dibuat.exitCode == 0);
 
-    File('$target/writepapertex-periksa.txt').writeAsStringSync(
-      'Ditulis oleh tool/periksa-git.dart pada ${DateTime.now()}\n',
-    );
+    File(
+      '$target/writepapertex-periksa.txt',
+    ).writeAsStringSync('Ditulis oleh tool/periksa-git.dart pada ${DateTime.now()}\n');
 
     final after = await backend.status(target);
     periksa('perubahan terlihat', !(after?.isClean ?? true), '${after?.changes.length} berkas');
@@ -67,7 +67,10 @@ Future<void> main() async {
     periksa('commit', commit.ok, commit.ok ? '' : commit.output.trim());
 
     final kedua = await backend.commitAll(target, message: 'tidak ada apa-apa');
-    periksa('commit kedua mengaku tidak ada perubahan', kedua.ok && kedua.message.contains('Tidak'));
+    periksa(
+      'commit kedua mengaku tidak ada perubahan',
+      kedua.ok && kedua.message.contains('Tidak'),
+    );
 
     // Cabang yang baru dibuat belum punya hulu, dan `git push` tanpa argumen
     // akan menolaknya. `push.default = current` membuat dorongan pertamanya
@@ -84,8 +87,10 @@ Future<void> main() async {
     if (push.ok) {
       // Menghapus cabang di sisi remote bukan pekerjaan aplikasi ini, jadi
       // namanya dicetak dan pembersihannya diserahkan ke yang menjalankan.
-      stdout.writeln('\nHapus cabang ujinya dengan:\n'
-          '  gh api -X DELETE repos/<pemilik>/<nama>/git/refs/heads/$branch');
+      stdout.writeln(
+        '\nHapus cabang ujinya dengan:\n'
+        '  gh api -X DELETE repos/<pemilik>/<nama>/git/refs/heads/$branch',
+      );
     }
   } finally {
     work.deleteSync(recursive: true);

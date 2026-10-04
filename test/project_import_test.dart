@@ -9,7 +9,10 @@ void main() {
 
     test('alamat HTTPS GitHub dikenali', () {
       final u = urls('https://github.com/situkangsayur/writepapertex');
-      expect(u, contains('https://github.com/situkangsayur/writepapertex/archive/refs/heads/main.zip'));
+      expect(
+        u,
+        contains('https://github.com/situkangsayur/writepapertex/archive/refs/heads/main.zip'),
+      );
     });
 
     test('akhiran .git dibuang', () {

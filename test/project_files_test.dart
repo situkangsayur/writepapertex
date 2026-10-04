@@ -80,10 +80,7 @@ Isi.
         bodyLineFor(NewFileKind.bibliography, 'pustaka.bib', usesBiblatex: false),
         contains(r'\bibliography{pustaka}'),
       );
-      expect(
-        preambleLineFor(NewFileKind.bibliography, 'pustaka.bib', usesBiblatex: false),
-        isNull,
-      );
+      expect(preambleLineFor(NewFileKind.bibliography, 'pustaka.bib', usesBiblatex: false), isNull);
       expect(
         preambleLineFor(NewFileKind.bibliography, 'pustaka.bib', usesBiblatex: true),
         r'\addbibresource{pustaka.bib}',
@@ -118,10 +115,7 @@ Isi.
     });
 
     test('folder yang sudah ada dipakai lagi', () {
-      expect(
-        preferredAssetDir(<String>['main.tex', 'figures/alur.pdf'], graphic: true),
-        'figures',
-      );
+      expect(preferredAssetDir(<String>['main.tex', 'figures/alur.pdf'], graphic: true), 'figures');
       expect(preferredAssetDir(<String>['main.tex'], graphic: true), 'gambar');
       expect(preferredAssetDir(<String>['main.tex'], graphic: false), 'data');
     });

@@ -149,7 +149,9 @@ class LatexLogParser {
   /// `galat: `). Tanpa dibuang, keduanya tertelan ke dalam nama berkas —
   /// `[7,9 s] peringatan: bab/02-tinjauan-pustaka` — sehingga yang tersisa di
   /// layar hanya "baris 142", tanpa tahu di berkas mana dari belasan bab.
-  static final RegExp _prefix = RegExp(r'^(?:\[[\d.,]+\s*s\]\s*)?(?:(?:peringatan|galat|warning|error):\s+)?');
+  static final RegExp _prefix = RegExp(
+    r'^(?:\[[\d.,]+\s*s\]\s*)?(?:(?:peringatan|galat|warning|error):\s+)?',
+  );
 
   /// Reads [log] into messages, without repeats.
   ///

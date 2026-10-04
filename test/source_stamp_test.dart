@@ -23,11 +23,8 @@ void main() {
     SourceStamp.remember(projectDir: project.path, mainFile: 'main.tex', pass: pass);
   }
 
-  String? reuse({CompilePass pass = CompilePass.quick}) => SourceStamp.reusablePdf(
-    projectDir: project.path,
-    mainFile: 'main.tex',
-    pass: pass,
-  );
+  String? reuse({CompilePass pass = CompilePass.quick}) =>
+      SourceStamp.reusablePdf(projectDir: project.path, mainFile: 'main.tex', pass: pass);
 
   test('tanpa kompilasi sebelumnya tidak ada yang bisa dipakai lagi', () {
     expect(reuse(), isNull);
@@ -106,10 +103,7 @@ void main() {
 
     // Repositori yang baru di-clone membawa PDF di akar proyeknya.
     final published = File(p.join(project.path, 'main.pdf'))..writeAsStringSync('%PDF-1.4');
-    expect(
-      SourceStamp.existingPdf(projectDir: project.path, mainFile: 'main.tex'),
-      published.path,
-    );
+    expect(SourceStamp.existingPdf(projectDir: project.path, mainFile: 'main.tex'), published.path);
 
     // Hasil build lebih baru, jadi ia yang didahulukan.
     final built = File(p.join(buildDirFor(project.path), 'main.pdf'))..createSync(recursive: true);

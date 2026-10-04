@@ -50,8 +50,10 @@ void main() {
 
     test('http sendiri dibiarkan, bukan dipaksa https', () {
       // Gitea di jaringan kantor kadang memang hanya http.
-      expect(normaliseRemoteUrl('http://gitea.kantor/tim/paper.git'),
-          'http://gitea.kantor/tim/paper.git');
+      expect(
+        normaliseRemoteUrl('http://gitea.kantor/tim/paper.git'),
+        'http://gitea.kantor/tim/paper.git',
+      );
     });
 
     test('kosong tetap kosong', () {
@@ -80,10 +82,7 @@ void main() {
     });
 
     test('gagal mencari alamat disebut sebagai persoalan jaringan', () {
-      expect(
-        explainGitFailure('failed to resolve address for github.com'),
-        contains('jaringan'),
-      );
+      expect(explainGitFailure('failed to resolve address for github.com'), contains('jaringan'));
     });
 
     test('keluhan yang tidak dikenali dibiarkan apa adanya', () {

@@ -87,10 +87,10 @@ void main() {
 
       expect(tree.map((n) => n.name), <String>['bab', 'gambar', 'main.tex', 'README.md']);
       expect(tree.first.isDirectory, isTrue);
-      expect(
-        tree.first.children.map((n) => n.name),
-        <String>['01-pendahuluan.tex', '02-metode.tex'],
-      );
+      expect(tree.first.children.map((n) => n.name), <String>[
+        '01-pendahuluan.tex',
+        '02-metode.tex',
+      ]);
     });
 
     test('jalur berkas tetap utuh di dalam simpulnya', () {

@@ -95,7 +95,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// count as the user typing.
   bool _loadingFile = false;
 
-
   /// Recompile by itself once typing pauses.
   bool _autoCompile = false;
   Timer? _autoTimer;
@@ -187,7 +186,10 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           child: log.trim().isEmpty
               ? const Text('Belum ada kompilasi di sesi ini.')
               : SingleChildScrollView(
-                  child: SelectableText(log, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  child: SelectableText(
+                    log,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  ),
                 ),
         ),
         actions: <Widget>[
@@ -508,10 +510,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       _project = _project.copyWith(mainFile: relative);
       // Hasil lama milik berkas utama sebelumnya, jadi tidak lagi berlaku.
       _result = null;
-      _openedPdf = SourceStamp.existingPdf(
-        projectDir: _project.directory,
-        mainFile: relative,
-      );
+      _openedPdf = SourceStamp.existingPdf(projectDir: _project.directory, mainFile: relative);
     });
     _say('$relative jadi berkas utama');
   }
@@ -1320,10 +1319,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
 
   String _messageLine(LatexMessage m) {
     final file = _messageFile(m) ?? m.file;
-    final where = <String>[
-      ?file,
-      if (m.line != null) '${m.line}',
-    ].join(':');
+    final where = <String>[?file, if (m.line != null) '${m.line}'].join(':');
     return where.isEmpty ? m.text : '$where — ${m.text}';
   }
 
@@ -1363,9 +1359,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// barisnya, dan bisa diketuk untuk langsung ke sana: "baris 40" saja tidak
   /// berarti apa-apa di proyek yang punya belasan berkas bab.
   Widget _messageBar(List<LatexMessage> all, ColorScheme scheme) {
-    final errors = all
-        .where((m) => m.severity == LatexSeverity.error)
-        .toList(growable: false);
+    final errors = all.where((m) => m.severity == LatexSeverity.error).toList(growable: false);
     final shown = errors.isNotEmpty
         ? errors
         : all.where((m) => m.severity == LatexSeverity.warning).toList(growable: false);

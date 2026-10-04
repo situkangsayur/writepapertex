@@ -117,7 +117,9 @@ class SourceStamp {
     required String mainFile,
     required CompilePass pass,
   }) {
-    final pdf = File(p.join(buildDirFor(projectDir), '${p.basenameWithoutExtension(mainFile)}.pdf'));
+    final pdf = File(
+      p.join(buildDirFor(projectDir), '${p.basenameWithoutExtension(mainFile)}.pdf'),
+    );
     if (!pdf.existsSync()) return null;
     final stamp = _file(projectDir);
     if (!stamp.existsSync()) return null;
