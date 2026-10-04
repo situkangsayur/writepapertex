@@ -99,7 +99,7 @@ Keadaan per versi 0.12.2 (2026-10-04).
 - **Kompilasi yang tidak perlu tidak dijalankan.** Kalau tidak ada berkas
   sumber yang berubah sejak kompilasi terakhir, PDF yang ada langsung dipakai.
   TeX tidak mengenal kompilasi bertahap, jadi yang bisa dihemat adalah
-  kompilasi yang memang tidak perlu terjadi. *Paksa kompilasi ulang* tersedia
+  kompilasi yang memang tidak perlu terjadi. *Paksa kompilasi lengkap* tersedia
   untuk saat hasilnya dicurigai.
 - **Kemajuan yang terlihat bergerak.** Selama kompilasi, bilah atas
   menunjukkan langkah yang sedang dikerjakan dan detik yang berjalan. Spinner

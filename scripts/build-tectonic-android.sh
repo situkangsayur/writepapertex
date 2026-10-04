@@ -131,6 +131,30 @@ if old not in s:
 p.write_text(s.replace(old, new))
 PATCH
 
+# (e) Kompresi PDF bisa dimatikan untuk lintasan cepat. xdvipdfmx memakan
+#     hampir tiga detik dari tujuh pada proposal disertasi, dan sebagian besar
+#     adalah memampatkan aliran isi dan font. Untuk pratinjau yang dibuang
+#     begitu kompilasi berikutnya selesai, berkas yang lebih besar adalah harga
+#     yang murah. Tectonic tidak membuka pilihan ini ke API sesinya, jadi
+#     dibaca dari WPTEX_PDF_TANPA_KOMPRESI yang disetel oleh compile.rs.
+python3 - <<'PATCH'
+import pathlib
+p = pathlib.Path('src/driver.rs')
+s = p.read_text()
+if 'WPTEX_PDF_TANPA_KOMPRESI' in s:
+    raise SystemExit(0)
+old = """            engine.build_date(self.build_date);
+"""
+new = """            engine.build_date(self.build_date);
+            if std::env::var_os("WPTEX_PDF_TANPA_KOMPRESI").is_some() {
+                engine.enable_compression(false);
+            }
+"""
+if old not in s:
+    raise SystemExit('Tambalan kompresi gagal: polanya tidak ditemukan')
+p.write_text(s.replace(old, new, 1))
+PATCH
+
 # --- 4. Bangun ------------------------------------------------------------
 #
 # external-harfbuzz: pakai harfbuzz dari vcpkg, bukan submodule yang tidak

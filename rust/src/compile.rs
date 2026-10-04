@@ -137,6 +137,15 @@ pub fn run(
     if let Mode::Quick = mode {
         builder.reruns(0);
     }
+    // Lintasan cepat menghasilkan pratinjau yang dibuang begitu kompilasi
+    // berikutnya selesai, jadi PDF-nya tidak dimampatkan: xdvipdfmx turun dari
+    // 2,7 ke 0,9 detik pada proposal disertasi, dan berkasnya membesar dari
+    // 1 ke 10 MB — di disk tablet sendiri, bukan yang dikirim ke orang.
+    // Lintasan lengkap, yang hasilnya dibagikan, tetap dimampatkan.
+    match mode {
+        Mode::Quick => std::env::set_var("WPTEX_PDF_TANPA_KOMPRESI", "1"),
+        Mode::Full => std::env::remove_var("WPTEX_PDF_TANPA_KOMPRESI"),
+    }
 
     status.line(match mode {
         Mode::Quick => "Menjalankan LaTeX (satu lintasan)…",

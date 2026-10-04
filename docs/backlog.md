@@ -311,6 +311,16 @@ Diukur langsung di tablet dengan mesin yang sama persis, dipanggil dari
       namanya — empat detik di setiap lintasan, separuh lintasan TeX. Cache
       fontconfig tidak menolong. Fontconfig kini diarahkan ke folder font
       milik aplikasi. Lintasan cepat 11 → 6,9 detik, lengkap 26 → 14 detik
+- [x] **Dua tombol: Lihat dan Lengkap** (2026-10-04). Lintasan cepat tidak
+      lagi memampatkan PDF — pratinjau yang dibuang di kompilasi berikutnya —
+      dan xdvipdfmx turun dari 2,7 ke 0,9 detik (tambalan e, dibaca lewat
+      `WPTEX_PDF_TANPA_KOMPRESI`). **Lihat** ±5 detik di mesin, **Lengkap**
+      15,8 detik di aplikasi. Pilihan mode di menu dihapus: yang sedang
+      menulis tidak pernah ingat sedang di mode mana
+- [ ] Preamble masih ±3 detik per lintasan (fontspec, unicode-math, babel).
+      Bisa dipangkas dengan format yang sudah memuat paketnya, tetapi XeTeX
+      tidak bisa menyimpan font native ke format, jadi preamble harus dipecah
+      — rapuh untuk preamble buatan orang lain
 - [x] **Pesan kompilasi menyebut berkasnya, bisa diketuk, dan peringatan
       dilipat** (2026-10-04). Dulu yang tampil hanya "baris 142" — awalan cap
       waktu dan "peringatan:" tertelan ke nama berkas — padahal proyeknya punya

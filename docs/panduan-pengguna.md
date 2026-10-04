@@ -109,9 +109,10 @@ Bilah atas, dari kiri:
 - **Simpan dan bagikan** — *Simpan berkas*, *Simpan PDF…*, *Ekspor proyek
   sebagai ZIP*
 - **Git**
-- **Kompilasi cepat** / **Kompilasi lengkap** — tombol utama
-- **Cara kompilasi** (panah kecil) — pilihan lintasan dan menu kompilasi
-  lainnya
+- **Lihat** — kompilasi cepat untuk melihat hasil
+- **Lengkap** — kompilasi dengan daftar pustaka, PDF siap dibagikan
+- **Cara kompilasi** (panah kecil) — rincian waktu, paksa kompilasi lengkap,
+  dan paket TeX
 
 Di bawahnya: pohon berkas (di layar sempit, masuk laci — geser dari kiri),
 penyunting, dan pratinjau PDF. Pemisah antara penyunting dan PDF bisa diseret.
@@ -187,13 +188,16 @@ setelah itu.
 | | **Cepat** | **Lengkap** |
 |---|---|---|
 | Yang dijalankan | TeX sekali, lalu PDF | BibTeX, lalu TeX diulang sampai rujukannya mantap |
-| Lama (proposal disertasi, tablet) | ±7 detik | ±14 detik |
+| Tombol | **Lihat** | **Lengkap** |
+| Lama (proposal disertasi, tablet) | ±6 detik | ±16 detik |
+| PDF-nya | tidak dimampatkan (±10 MB), hanya untuk pratinjau | dimampatkan (±1 MB), siap dikirim |
 | Cocok untuk | melihat paragraf yang baru diubah | sebelum PDF dibaca orang lain |
 | Kekurangannya | rujukan dan kutipan **baru** bisa tampil `??` | lebih lama |
 
-Pilih lewat **Cara kompilasi** (panah di sebelah tombol). Pilihannya diingat,
-dan tombolnya berganti nama jadi **Kompilasi cepat** atau **Kompilasi
-lengkap**. Kompilasi otomatis selalu lintasan cepat.
+Masing-masing punya tombolnya sendiri, jadi tidak ada mode yang harus diingat.
+Kompilasi otomatis selalu lintasan cepat. Sebelum menyimpan atau membagikan
+PDF ke orang lain, tekan **Lengkap**: PDF dari **Lihat** sengaja tidak
+dimampatkan supaya lebih cepat, dan ukurannya sekitar sepuluh kali lipat.
 
 Setelah lintasan cepat, kalau TeX sendiri melaporkan ada yang belum mantap,
 muncul *"Rujukan atau daftar pustakanya belum mantap."* dengan tombol
@@ -206,7 +210,7 @@ di Android.)
 Kalau tidak ada berkas sumber yang berubah sejak kompilasi terakhir dengan
 lintasan yang sama, muncul *"Tidak ada yang berubah — PDF terakhir dipakai
 lagi."* dan mesinnya tidak dijalankan. Untuk tetap mengompilasi: **Cara
-kompilasi → Paksa kompilasi ulang**.
+kompilasi → Paksa kompilasi lengkap**.
 
 ### Selama kompilasi
 
@@ -347,8 +351,8 @@ Repositori kosong di GitHub/Gitea harus dibuat dulu lewat situsnya.
 
 ## 7. Kiat
 
-- Biarkan lintasan **Cepat** sebagai bawaan. Jalankan **Lengkap** sekali
-  sebelum mengirim PDF ke orang lain, atau saat tawaran *Jalankan lengkap*
+- Pakai **Lihat** selama menulis. Tekan **Lengkap** sekali sebelum mengirim
+  PDF ke orang lain, atau saat tawaran *Jalankan lengkap*
   muncul dan nomor rujukannya sedang dilihat.
 - Nyalakan **Kompilasi otomatis** saat merapikan tulisan, matikan saat
   mengetik panjang — tiap jeda dua detik berarti satu kompilasi.
@@ -384,16 +388,16 @@ putus. Sambungkan lagi dan kompilasi ulang; paket yang sudah sempat terunduh
 tidak diunduh lagi.
 
 **"mesin berhenti mendadak: …"** — mesin TeX mengalami kegagalan di dalam;
-aplikasinya tetap hidup. Salin pesannya, lalu coba **Paksa kompilasi ulang**.
+aplikasinya tetap hidup. Salin pesannya, lalu coba **Paksa kompilasi lengkap**.
 
 **"mesin selesai tanpa keluhan, tetapi PDF-nya tidak ada"** — jarang terjadi;
-coba **Paksa kompilasi ulang** dengan lintasan **Lengkap**.
+coba **Paksa kompilasi lengkap**.
 
 **Font yang diminta tidak ditemukan (`The font "…" cannot be found`)** — di
 Android font sistem tidak dicari lewat nama. Lihat *Font di Android* di atas.
 
 **PDF tidak berubah padahal sudah menyunting** — pastikan berkasnya tersimpan
-(tidak ada `•`). Kalau masih, **Paksa kompilasi ulang**.
+(tidak ada `•`). Kalau masih, **Paksa kompilasi lengkap**.
 
 **"Belum ada PDF. Tekan Kompilasi dulu."** — *Simpan PDF…* hanya menyimpan
 hasil kompilasi di sesi ini.

@@ -95,12 +95,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   /// count as the user typing.
   bool _loadingFile = false;
 
-  /// Lintasan yang dipakai tombol Kompilasi.
-  ///
-  /// Cepat sebagai bawaan: yang paling sering diinginkan adalah melihat satu
-  /// paragraf yang baru diubah, bukan daftar pustaka yang sudah benar sejak
-  /// kemarin.
-  CompilePass _pass = CompilePass.quick;
 
   /// Recompile by itself once typing pauses.
   bool _autoCompile = false;
@@ -162,7 +156,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     _checkEngine();
     _loadToken();
     _loadPalette();
-    _loadPass();
     _loadSplit();
   }
 
@@ -175,18 +168,6 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Future<void> _loadSplit() async {
     final saved = await widget.store.splitRatio();
     if (saved != null && mounted) setState(() => _split = saved);
-  }
-
-  Future<void> _loadPass() async {
-    final saved = await widget.store.compilePass();
-    if (saved == null || !mounted) return;
-    setState(() => _pass = saved == CompilePass.full.name ? CompilePass.full : CompilePass.quick);
-  }
-
-  Future<void> _setPass(CompilePass pass) async {
-    setState(() => _pass = pass);
-    await widget.store.saveCompilePass(pass.name);
-    _say('Kompilasi ${pass.label.toLowerCase()}: ${pass.hint}');
   }
 
   /// Memperlihatkan cap waktu tiap langkah kompilasi terakhir.
@@ -842,7 +823,8 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
   Future<void> _compile({CompilePass? pass, bool force = false}) async {
     if (_compiling) return;
     await _save();
-    final wanted = pass ?? _pass;
+    // Tanpa keterangan berarti melihat: lintasan cepat.
+    final wanted = pass ?? CompilePass.quick;
 
     // Tidak ada yang berubah sejak kompilasi terakhir berarti PDF di folder
     // sudah jawaban yang benar. Menjalankan mesinnya lagi akan menghasilkan
@@ -1071,37 +1053,40 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             ],
           ),
           IconButton(tooltip: 'Git', icon: const Icon(Icons.commit_outlined), onPressed: _openGit),
+          // Dua tombol, dua maksud. "Lihat" untuk melihat paragraf yang baru
+          // diubah: satu lintasan, PDF tidak dimampatkan, sekitar lima detik
+          // pada disertasi. "Lengkap" untuk hasil yang dibagikan: daftar
+          // pustaka, rujukan yang mantap, PDF yang kecil. Dulu keduanya satu
+          // tombol yang caranya dipilih di menu, dan yang sedang menulis tidak
+          // pernah ingat sedang di mode mana.
           FilledButton.tonalIcon(
-            onPressed: (_compiling || _engineReady == false) ? null : () => _compile(),
+            onPressed: (_compiling || _engineReady == false)
+                ? null
+                : () => _compile(pass: CompilePass.quick),
             icon: const Icon(Icons.play_arrow, size: 18),
-            label: Text('Kompilasi ${_pass.label.toLowerCase()}'),
+            label: const Text('Lihat'),
+          ),
+          const SizedBox(width: 6),
+          Tooltip(
+            message: 'Kompilasi lengkap: daftar pustaka, rujukan, PDF siap dibagikan',
+            child: OutlinedButton.icon(
+              onPressed: (_compiling || _engineReady == false)
+                  ? null
+                  : () => _compile(pass: CompilePass.full),
+              icon: const Icon(Icons.menu_book_outlined, size: 18),
+              label: const Text('Lengkap'),
+            ),
           ),
           PopupMenuButton<String>(
             tooltip: 'Cara kompilasi',
             icon: const Icon(Icons.arrow_drop_down),
             onSelected: (choice) => switch (choice) {
-              'cepat' => _setPass(CompilePass.quick),
-              'lengkap' => _setPass(CompilePass.full),
               'paket' => _showCacheInfo(),
-              'paksa' => _compile(force: true),
+              'paksa' => _compile(pass: CompilePass.full, force: true),
               'waktu' => _showTimeline(),
               _ => _fetchDependencies(),
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
-              for (final pass in CompilePass.values)
-                PopupMenuItem<String>(
-                  value: pass == CompilePass.quick ? 'cepat' : 'lengkap',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      _pass == pass ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                    ),
-                    title: Text(pass.label),
-                    subtitle: Text(pass.hint),
-                  ),
-                ),
-              const PopupMenuDivider(),
               const PopupMenuItem<String>(
                 value: 'waktu',
                 child: ListTile(
@@ -1118,7 +1103,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.refresh),
-                  title: Text('Paksa kompilasi ulang'),
+                  title: Text('Paksa kompilasi lengkap'),
                   subtitle: Text('walau sumbernya tidak berubah'),
                 ),
               ),
