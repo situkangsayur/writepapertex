@@ -290,6 +290,24 @@ satu, bukan dari tes.
 
 ---
 
+## Kompilasi di tablet yang makan satu setengah menit (2026-10-04)
+
+Diukur langsung di tablet dengan mesin yang sama persis, dipanggil dari
+`/data/local/tmp` pada proposal disertasi:
+
+- [x] **Lintasan cepat tidak pernah menghasilkan PDF.** `PassSetting::Tex`
+      berhenti di `.xdv` tanpa menjalankan xdvipdfmx, jadi setiap kompilasi
+      otomatis berakhir "PDF-nya tidak ada", dan setiap rebuild sungguhan jatuh
+      ke lintasan lengkap. Sekarang lintasan biasa dengan nol pengulangan:
+      satu TeX, BibTeX bila perlu, lalu PDF — 11 detik
+- [x] **Lintasan lengkap mengulang TeX tujuh kali.** Tectonic menganggap
+      `.bbl` "berubah" di setiap lintasan ("internal consistency problem when
+      checking if proposal.bbl changed") dan berhenti hanya di batas enam
+      ulangan. Ditambal di `scripts/build-tectonic-android.sh`: keadaan tanpa
+      sidik jari dianggap tidak berubah. 57 detik menjadi 26 detik
+- [ ] Fontconfig memindai `/system/fonts` di setiap lintasan tanpa cache yang
+      bisa ditulisi (±1 detik per lintasan)
+
 ## Lintas fase
 
 - [x] Lisensi AGPL-3.0-or-later

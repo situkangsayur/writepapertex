@@ -128,10 +128,15 @@ pub fn run(
         .keep_logs(true)
         .print_stdout(false)
         .output_format(OutputFormat::Pdf)
-        .pass(match mode {
-            Mode::Quick => PassSetting::Tex,
-            Mode::Full => PassSetting::Default,
-        });
+        // Lintasan cepat **bukan** `PassSetting::Tex`: yang itu berhenti di
+        // `.xdv` dan tidak pernah menjalankan xdvipdfmx, jadi tidak ada PDF
+        // sama sekali. Lintasan biasa dengan nol pengulangan memberi satu
+        // lintasan TeX, BibTeX bila `\bibdata` ada (sepersepuluh detik), lalu
+        // PDF-nya.
+        .pass(PassSetting::Default);
+    if let Mode::Quick = mode {
+        builder.reruns(0);
+    }
 
     status.line(match mode {
         Mode::Quick => "Menjalankan LaTeX (satu lintasan)…",

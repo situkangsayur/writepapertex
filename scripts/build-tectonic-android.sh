@@ -102,6 +102,35 @@ s = s.replace('pub fn ensure_user_cache_dir(path: &str) -> Result<PathBuf> {\n  
 p.write_text(s)
 PATCH
 
+# (d) Pemeriksaan "berkas ini berubah, ulangi TeX" menganggap setiap keadaan
+#     yang tidak dikenalnya sebagai **berubah**. `.bbl` yang ditulis BibTeX
+#     jatuh ke keadaan itu di setiap lintasan ("internal consistency problem
+#     when checking if proposal.bbl changed"), jadi lintasan lengkap selalu
+#     mengulang TeX sampai batas enam kali. Diukur di tablet pada proposal
+#     disertasi: tujuh lintasan, 57 detik, padahal yang dibutuhkan empat.
+#     `.bbl` hanya berubah ketika BibTeX dijalankan, dan itu sudah memicu
+#     ulangannya sendiri; keadaan tanpa sidik jari tidak bisa dibuktikan
+#     berubah, jadi dianggap tidak.
+python3 - <<'PATCH'
+import pathlib
+p = pathlib.Path('src/driver.rs')
+s = p.read_text()
+if 'tanpa sidik jari tidak bisa dibuktikan berubah' in s:
+    raise SystemExit(0)
+old = """                            "internal consistency problem when checking if {} changed",
+                            name
+                        );
+                        true"""
+new = """                            "internal consistency problem when checking if {} changed",
+                            name
+                        );
+                        // tanpa sidik jari tidak bisa dibuktikan berubah
+                        false"""
+if old not in s:
+    raise SystemExit('Tambalan driver.rs gagal: polanya tidak ditemukan')
+p.write_text(s.replace(old, new))
+PATCH
+
 # --- 4. Bangun ------------------------------------------------------------
 #
 # external-harfbuzz: pakai harfbuzz dari vcpkg, bukan submodule yang tidak
